@@ -1,5 +1,7 @@
-module Dice exposing (Dice(..), roll, rollx, Rules(..))
+module Dice exposing (Dice(..), roll, Rules(..), andThen, plus)
 import Random
+
+--(Int, List Int)
 
 type Dice = D4
     | D6
@@ -9,10 +11,25 @@ type Dice = D4
     | D20
     | D100
     | DX Int 
+    | DCustom (Random.Generator (List Int))
+    | Constant Int
 
 type Rules = DropLowest
     | CombineResults
 
+-- roll 2 D4 |> plus 2 D8 |> result add 1
+plus : Random.Generator (List Int) -> Random.Generator (List Int) -> Random.Generator (List Int)
+plus diceA diceB =
+    Random.map2 (++) diceA diceB
+       
+roll : Int -> Dice -> Random.Generator (List Int)
+roll numDice dieType =
+    Random.list numDice (toGenerator dieType)
+
+
+andThen : Rules -> Random.Generator (List Int) -> Random.Generator (List Int)
+andThen action generator =
+    Random.map (handleRule action) generator
 
 toGenerator : Dice -> Random.Generator Int
 toGenerator dieType =
@@ -32,12 +49,11 @@ toGenerator dieType =
         D100 ->
             dX 100
         DX sides->
-            dX sides
-       
-
-roll : Int -> Dice -> Random.Generator (List Int)
-roll numDice dieType =
-    Random.list numDice (toGenerator dieType)
+            dX sides 
+        DCustom generator ->
+            dCustom generator
+        Constant val ->
+            Random.constant val
 
 
 rollx : Int -> Dice -> List Rules -> Random.Generator (List Int)
@@ -77,3 +93,12 @@ combineResults rolls =
 dX : Int -> Random.Generator Int
 dX sides =
     Random.int 1 sides
+
+dCustom : Random.Generator (List Int) -> Random.Generator Int
+dCustom roller =
+    Random.map cR roller 
+
+
+cR : List Int -> Int
+cR rolls =
+    List.foldl (+) 0 rolls

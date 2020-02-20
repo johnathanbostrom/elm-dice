@@ -61,6 +61,20 @@ rollDice num dieType =
     roll num dieType
     |> Random.generate RollResult
 
+statGen : Dice
+statGen =
+    roll 4 D6
+    |> andThen DropLowest
+    |> andThen CombineResults
+    |> DCustom
+
+plusRoll : Dice
+plusRoll =
+    roll 2 (DX 4)
+    |> plus (roll 2 (DX 6) |> andThen DropLowest)
+    |> DCustom
+
+
 -- VIEW
 
 
@@ -88,12 +102,15 @@ diceButtons =
         , diceButton D12 "D12"
         , diceButton D20 "D20"
         , diceButton D100 "D100"
+        , diceButton (DCustom (roll 3 D6)) "3D6"
+        , diceButton statGen "statGen"
+        , diceButton plusRoll "2"
         ]
 
 
 diceButton : Dice -> String -> Html Msg
 diceButton dieType dieName =
-    button [ onClick <| RollDice 1 dieType ] [text dieName]
+    button [ onClick <| RollDice 6 dieType ] [text dieName]
 
 -- SUBSCRIPTIONS
 
