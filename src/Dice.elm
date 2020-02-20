@@ -1,4 +1,4 @@
-module Dice exposing (Dice(..), roll, Rules(..), andThen, plus)
+module Dice exposing (Dice(..), roll, Rules(..), andThen, plus, rollExpanded, RollResult, DieResult)
 import Random
 
 --(Int, List Int)
@@ -17,6 +17,17 @@ type Dice = D4
 type Rules = DropLowest
     | CombineResults
 
+
+type alias RollResult =
+    { value: Int
+    , rolls: List DieResult
+    }
+
+type alias DieResult =
+    { dieType: String
+    , value: Int
+    }
+
 -- roll 2 D4 |> plus 2 D8 |> result add 1
 plus : Random.Generator (List Int) -> Random.Generator (List Int) -> Random.Generator (List Int)
 plus diceA diceB =
@@ -26,6 +37,21 @@ roll : Int -> Dice -> Random.Generator (List Int)
 roll numDice dieType =
     Random.list numDice (toGenerator dieType)
 
+rollExpanded : Int -> Dice -> Random.Generator RollResult
+rollExpanded numDice dieType =
+    Random.list numDice (oneExpanded dieType)
+    |> Random.map combineExpanded
+
+combineExpanded : List DieResult -> RollResult
+combineExpanded dieResults = 
+    let
+        val = List.map (\d -> d.value) dieResults |> List.foldl (+) 0
+    in
+        RollResult val dieResults
+    
+oneExpanded : Dice -> Random.Generator DieResult
+oneExpanded dieType =    
+    Random.map (DieResult (dieName dieType)) (toGenerator dieType)
 
 andThen : Rules -> Random.Generator (List Int) -> Random.Generator (List Int)
 andThen action generator =
@@ -54,6 +80,30 @@ toGenerator dieType =
             dCustom generator
         Constant val ->
             Random.constant val
+
+dieName : Dice -> String
+dieName dieType =
+    case dieType of
+        D4 ->
+            "D4"
+        D6 ->
+            "D6"
+        D8 ->
+            "D8"
+        D10 ->
+            "D10"
+        D12 ->
+            "D12"
+        D20 ->
+            "D20"
+        D100 ->
+            "D100"
+        DX sides->
+            "D" ++ (String.fromInt sides)
+        DCustom generator ->
+            "Custom"
+        Constant val ->
+            "Constant: " ++ (String.fromInt val)
 
 
 rollx : Int -> Dice -> List Rules -> Random.Generator (List Int)

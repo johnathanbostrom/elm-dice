@@ -20,7 +20,7 @@ main =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { rolls = [ ]
+    ( { rolls = [ ], eRolls = ""
       }
     , Cmd.none
     )
@@ -32,6 +32,7 @@ init =
 
 type alias Model =
     { rolls : List Int
+    , eRolls : String
     }
 
 
@@ -42,6 +43,8 @@ type alias Model =
 type Msg
     = RollDice Int Dice
     | RollResult (List Int)
+    | RollResultExpanded RollResult
+    | RollExpanded
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -55,6 +58,11 @@ update msg model =
             ( {model | rolls = newRolls }
             , Cmd.none
             )
+        RollResultExpanded newRolls ->
+            ({model | eRolls = rResultToString newRolls}, Cmd.none)
+        RollExpanded ->
+            (model, expandedRoll)
+
 
 rollDice : Int -> Dice -> Cmd Msg
 rollDice num dieType =
@@ -74,21 +82,35 @@ plusRoll =
     |> plus (roll 2 (DX 6) |> andThen DropLowest)
     |> DCustom
 
+expandedRoll : Cmd Msg
+expandedRoll =
+    rollExpanded 1 statGen
+    |> Random.generate RollResultExpanded
+
+rResultToString : RollResult -> String
+rResultToString result =
+    String.fromInt result.value ++ " Rolls: " ++ dResultToString result.rolls
+
+dResultToString : List DieResult -> String
+dResultToString result =
+    List.map (\r -> r.dieType ++ ": " ++ String.fromInt r.value) result
+    |> String.join " "
 
 -- VIEW
 
 
 view : Model -> Html Msg
 view model =
-    div [] [renderDice model.rolls]
+    div [] [renderDice model]
 
 
-renderDice : List Int -> Html Msg
-renderDice rolls =
+renderDice : Model-> Html Msg
+renderDice model =
     div
         [ ]
-        [ text <| String.join "  " <| List.map String.fromInt rolls
+        [ text <| String.join "  " <| List.map String.fromInt model.rolls
         , diceButtons
+        , text <| model.eRolls
         ]
 
 
@@ -105,6 +127,7 @@ diceButtons =
         , diceButton (DCustom (roll 3 D6)) "3D6"
         , diceButton statGen "statGen"
         , diceButton plusRoll "2"
+        , expandedButton
         ]
 
 
@@ -112,6 +135,9 @@ diceButton : Dice -> String -> Html Msg
 diceButton dieType dieName =
     button [ onClick <| RollDice 6 dieType ] [text dieName]
 
+expandedButton : Html Msg
+expandedButton =
+    button [ onClick <| RollExpanded] [text "EXPAND"]
 -- SUBSCRIPTIONS
 
 
