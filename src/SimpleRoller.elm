@@ -43,7 +43,7 @@ type alias Model =
 type Msg
     = RollDice Int Dice
     | RollResult (List Int)
-    | RollResultExpanded RollResult
+    | RollResultExpanded (List RollResult)
     | RollExpanded
 
 
@@ -71,25 +71,34 @@ rollDice num dieType =
 
 statGen : Dice
 statGen =
-    roll 4 D6
-    |> andThen DropLowest
-    |> andThen CombineResults
+    rollExpanded 4 D6
+    -- |> andThen DropLowest
+    -- |> andThen CombineResults
     |> DCustom
 
 plusRoll : Dice
 plusRoll =
-    roll 2 (DX 4)
-    |> plus (roll 2 (DX 6) |> andThen DropLowest)
+    rollExpanded 2 (DX 4)
+    -- |> plus (roll 2 (DX 6) |> andThen DropLowest)
     |> DCustom
 
 expandedRoll : Cmd Msg
 expandedRoll =
-    rollExpanded 1 statGen
+    rollExpanded 6 statGen
     |> Random.generate RollResultExpanded
 
-rResultToString : RollResult -> String
-rResultToString result =
-    String.fromInt result.value ++ " Rolls: " ++ dResultToString result.rolls
+rResultToString : (List RollResult) -> String
+rResultToString results =
+    List.map (\r ->  rollToString r) results
+    |> String.join "\r\n"
+
+rollToString : RollResult -> String
+rollToString result =
+    case result of
+        OneDie d ->
+            d.dieType ++ ":  " ++ (String.fromInt d.value)
+        MultipleDice m ->
+            (String.fromInt m.value) ++ ":  Rolls:  " ++ (rResultToString m.rolls)
 
 dResultToString : List DieResult -> String
 dResultToString result =
@@ -124,7 +133,7 @@ diceButtons =
         , diceButton D12 "D12"
         , diceButton D20 "D20"
         , diceButton D100 "D100"
-        , diceButton (DCustom (roll 3 D6)) "3D6"
+        , diceButton (DCustom (rollExpanded 3 D6)) "3D6"
         , diceButton statGen "statGen"
         , diceButton plusRoll "2"
         , expandedButton
