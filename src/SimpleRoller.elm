@@ -2,7 +2,8 @@ module SimpleRoller exposing (main)
 import Browser
 import Dice exposing (..)
 import Random exposing(generate)
-import Html exposing (Html, div, button, text)
+import Html exposing (Html, div, button, text, span)
+import Html.Attributes exposing (style)
 import Html.Events exposing (onClick)
 
 -- APP
@@ -20,8 +21,7 @@ main =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { rolls = [ ], eRolls = ""
-      }
+    ( { rolls = [ ]}
     , Cmd.none
     )
 
@@ -31,8 +31,7 @@ init =
 
 
 type alias Model =
-    { rolls : List Int
-    , eRolls : String
+    { rolls : List RollResult
     }
 
 
@@ -42,9 +41,7 @@ type alias Model =
 
 type Msg
     = RollDice Int Dice
-    | RollResult (List Int)
-    | RollResultExpanded (List RollResult)
-    | RollExpanded
+    | RollResult (List RollResult)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -58,10 +55,6 @@ update msg model =
             ( {model | rolls = newRolls }
             , Cmd.none
             )
-        RollResultExpanded newRolls ->
-            ({model | eRolls = rResultToString newRolls}, Cmd.none)
-        RollExpanded ->
-            (model, expandedRoll)
 
 
 rollDice : Int -> Dice -> Cmd Msg
@@ -71,26 +64,21 @@ rollDice num dieType =
 
 statGen : Dice
 statGen =
-    rollExpanded 4 D6
+    roll 4 D6
     -- |> andThen DropLowest
     -- |> andThen CombineResults
     |> DCustom
 
 plusRoll : Dice
 plusRoll =
-    rollExpanded 2 (DX 4)
+    roll 2 (DX 4)
     -- |> plus (roll 2 (DX 6) |> andThen DropLowest)
     |> DCustom
-
-expandedRoll : Cmd Msg
-expandedRoll =
-    rollExpanded 6 statGen
-    |> Random.generate RollResultExpanded
 
 rResultToString : (List RollResult) -> String
 rResultToString results =
     List.map (\r ->  rollToString r) results
-    |> String.join "\r\n"
+    |> String.join "~"
 
 rollToString : RollResult -> String
 rollToString result =
@@ -117,11 +105,10 @@ renderDice : Model-> Html Msg
 renderDice model =
     div
         [ ]
-        [ text <| String.join "  " <| List.map String.fromInt model.rolls
+        [ text <| String.join "  " <| List.map String.fromInt <| justResults model.rolls
         , diceButtons
-        , text <| model.eRolls
+        , renderExpandedResults model.rolls
         ]
-
 
 diceButtons : Html Msg
 diceButtons = 
@@ -133,20 +120,28 @@ diceButtons =
         , diceButton D12 "D12"
         , diceButton D20 "D20"
         , diceButton D100 "D100"
-        , diceButton (DCustom (rollExpanded 3 D6)) "3D6"
+        , diceButton (DCustom (roll 2 (DCustom <| roll 2 (DCustom <| roll 2 statGen)))) "3D6"
         , diceButton statGen "statGen"
         , diceButton plusRoll "2"
-        , expandedButton
         ]
-
 
 diceButton : Dice -> String -> Html Msg
 diceButton dieType dieName =
     button [ onClick <| RollDice 6 dieType ] [text dieName]
 
-expandedButton : Html Msg
-expandedButton =
-    button [ onClick <| RollExpanded] [text "EXPAND"]
+
+renderExpandedResults : List RollResult -> Html Msg
+renderExpandedResults rolls =
+    div [] (List.map renderExpandedResult rolls)
+
+renderExpandedResult : RollResult -> Html Msg
+renderExpandedResult roll =
+    case roll of
+        OneDie d ->
+            span [style "margin-right" ".5em"] [text <| d.dieType ++ ":  " ++ String.fromInt d.value]
+        MultipleDice m ->
+            div [style "margin-left" "2em"] ([text <| "Value:  " ++ String.fromInt m.value ++ "  Rolls:  "] ++ (List.map renderExpandedResult m.rolls))
+
 -- SUBSCRIPTIONS
 
 

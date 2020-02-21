@@ -1,4 +1,4 @@
-module Dice exposing (Dice(..), roll, Rules(..), andThen, plus, rollExpanded, RollResult(..), DieResult)
+module Dice exposing (Dice(..), roll, Rules(..), andThen, plus, RollResult(..), DieResult, justResults)
 import Random
 
 --(Int, List Int)
@@ -15,7 +15,6 @@ type Dice = D4
     | Constant Int
 
 type Rules = DropLowest
-    | CombineResults
 
 
 type RollResult = OneDie DieResult
@@ -32,75 +31,21 @@ type alias DieResult =
     , value: Int
     }
 
--- roll 2 D4 |> plus 2 D8 |> result add 1
-plus : Random.Generator (List Int) -> Random.Generator (List Int) -> Random.Generator (List Int)
+plus : Random.Generator (List RollResult) -> Random.Generator (List RollResult) -> Random.Generator (List RollResult)
 plus diceA diceB =
     Random.map2 (++) diceA diceB
-       
-roll : Int -> Dice -> Random.Generator (List Int)
-roll numDice dieType =
-    Random.list numDice (toGenerator dieType)
 
-dExpanded : Int -> Random.Generator RollResult
-dExpanded sides = 
+dX : Int -> Random.Generator RollResult
+dX sides = 
     Random.int 1 sides
     |> Random.map (DieResult ("D" ++ String.fromInt sides))
     |> Random.map OneDie
 
+roll : Int -> Dice -> Random.Generator (List RollResult)
+roll numDice dieType =
+    Random.list numDice (toGenerator dieType)
 
-rollExpanded : Int -> Dice -> Random.Generator (List RollResult)
-rollExpanded numDice dieType =
-    Random.list numDice (toExpandedGenerator dieType)
-
-toExpandedGenerator : Dice -> Random.Generator RollResult
-toExpandedGenerator dieType =
-    case dieType of
-        D4 ->
-            dExpanded 4
-        D6 ->
-            dExpanded 6
-        D8 ->
-            dExpanded 8
-        D10 ->
-            dExpanded 10
-        D12 ->
-            dExpanded 12
-        D20 ->
-            dExpanded 20
-        D100 ->
-            dExpanded 100
-        DX sides->
-            dExpanded sides 
-        DCustom generator ->
-            dECustom generator
-        Constant val ->
-            Random.constant (OneDie (DieResult "constant" val))
-
-dECustom : Random.Generator (List RollResult) -> Random.Generator RollResult
-dECustom roller =
-    Random.map combineExpanded roller
-    |> Random.map MultipleDice
-
-
-combineExpanded : List RollResult -> DiceResult
-combineExpanded rollResults = 
-    let
-        val = List.map (\d -> getRollValue d) rollResults |> List.foldl (+) 0
-    in
-        DiceResult val rollResults
-
-getRollValue : RollResult -> Int
-getRollValue rollResult =
-    case rollResult of
-        OneDie d -> d.value
-        MultipleDice m -> m.value
-
-
-andThen : Rules -> Random.Generator (List Int) -> Random.Generator (List Int)
-andThen action generator =
-    Random.map (handleRule action) generator
-
-toGenerator : Dice -> Random.Generator Int
+toGenerator : Dice -> Random.Generator RollResult
 toGenerator dieType =
     case dieType of
         D4 ->
@@ -120,9 +65,34 @@ toGenerator dieType =
         DX sides->
             dX sides 
         DCustom generator ->
-            Random.constant 1 --dCustom generator
+            dCustom generator
         Constant val ->
-            Random.constant val
+            Random.constant (OneDie (DieResult "constant" val))
+
+dCustom : Random.Generator (List RollResult) -> Random.Generator RollResult
+dCustom roller =
+    Random.map combineResults roller
+    |> Random.map MultipleDice
+
+
+combineResults : List RollResult -> DiceResult
+combineResults rollResults = 
+    let
+        val = List.map (\d -> getRollValue d) rollResults |> List.foldl (+) 0
+    in
+        DiceResult val rollResults
+
+getRollValue : RollResult -> Int
+getRollValue rollResult =
+    case rollResult of
+        OneDie d -> d.value
+        MultipleDice m -> m.value
+
+
+andThen : Rules -> Random.Generator (List RollResult) -> Random.Generator (List RollResult)
+andThen action generator =
+    Random.map (handleRule action) generator
+
 
 dieName : Dice -> String
 dieName dieType =
@@ -149,49 +119,32 @@ dieName dieType =
             "Constant: " ++ (String.fromInt val)
 
 
-rollx : Int -> Dice -> List Rules -> Random.Generator (List Int)
-rollx numDice dieType rules =
-    roll numDice dieType
-    |> handleRules rules
-
-
-handleRules : List Rules -> Random.Generator (List Int) -> Random.Generator (List Int)
+handleRules : List Rules -> Random.Generator (List RollResult) -> Random.Generator (List RollResult)
 handleRules rules rollGenerator =
     List.map handleRule rules
     |>  List.foldl Random.map rollGenerator
 
 
-handleRule : Rules -> (List Int -> List Int)
+handleRule : Rules -> (List RollResult -> List RollResult)
 handleRule rule =
     case rule of
         DropLowest -> 
             dropLowest
-        CombineResults -> 
-            combineResults
 
+justResults : List RollResult -> List Int
+justResults rolls =
+    List.map justResult rolls
 
+justResult : RollResult -> Int
+justResult rollResult =
+    case rollResult of
+        OneDie d -> 
+            d.value
+        MultipleDice m -> 
+            m.value
 
-dropLowest : List Int -> List Int
+dropLowest : List RollResult -> List RollResult
 dropLowest rolls =
     rolls
-    |> List.sort
+    |> List.sortBy getRollValue
     |> List.drop 1
-
-combineResults : List Int -> List Int
-combineResults rolls =
-    List.foldl (+) 0 rolls
-    |> List.singleton
-
-
-dX : Int -> Random.Generator Int
-dX sides =
-    Random.int 1 sides
-
-dCustom : Random.Generator (List Int) -> Random.Generator Int
-dCustom roller =
-    Random.map cR roller 
-
-
-cR : List Int -> Int
-cR rolls =
-    List.foldl (+) 0 rolls
