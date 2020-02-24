@@ -1,4 +1,4 @@
-module Dice exposing (Dice(..), roll, Rules(..), andThen, plus, RollResult(..), DieResult, justResults, constant)
+module Dice exposing (Dice(..), roll, Rules(..), andThen, plus, RollResult, RollResults(..), justResults, constant)
 import Random
 import Maybe
 
@@ -16,41 +16,39 @@ type Dice = D4
 
 type Rules = DropLowest
 
-
-type RollResult = OneDie DieResult
-    | MultipleDice DiceResult
-
-
-type alias DiceResult =
-    { value: Int
-    , rolls: List RollResult
-    }
+type RollResults = Empty
+    | RollResults (List RollResult)
 
 
-type alias DieResult =
-    { dieType: String
-    , value: Int
-    }
+type alias RollResult =
+        { description: String
+        , value: Int
+        , children: RollResults
+        }
+
+oneDieResult : String -> Int -> RollResult
+oneDieResult desc val =
+    RollResult desc val Empty
+
+manyDieResult : String -> Int -> List RollResult -> RollResult
+manyDieResult desc val rolls =
+    RollResult desc val (RollResults rolls)
 
 
 constant : Int -> Random.Generator RollResult
 constant val =
     Random.constant val
-    |> Random.map (DieResult "Constant")
-    |> Random.map OneDie
+    |> Random.map (oneDieResult "Constant")
 
 plus : Random.Generator RollResult -> Random.Generator RollResult -> Random.Generator RollResult
 plus diceA diceB =
-    Random.map2 (\a b -> [a,b]) diceA diceB
-    |> Random.map combineResults
-    |> Random.map MultipleDice
+    Random.map2 (\a b -> combineResults (a.description ++ " + " ++ b.description) [a,b] ) diceA diceB
 
 
 dX : Int -> Random.Generator RollResult
 dX sides = 
     Random.int 1 sides
-    |> Random.map (DieResult ("D" ++ String.fromInt sides))
-    |> Random.map OneDie
+    |> Random.map (oneDieResult ("D" ++ String.fromInt sides))
 
 roll : Int -> Dice -> Random.Generator RollResult
 roll numDice dieType =
@@ -83,35 +81,33 @@ toGenerator dieType =
             dX sides 
         DicePool numDice dieTypes ->
             dicePool numDice dieTypes
-        Custom _ generator ->
-            generator
+        Custom description generator ->
+            dCustom description generator
+
+dCustom : String -> Random.Generator RollResult -> Random.Generator RollResult
+dCustom desc generator =
+    Random.map (\r -> {r | description = desc}) generator
+
 
 dConstant : Int -> Random.Generator RollResult
 dConstant val =
-    OneDie (DieResult "constant" val)
+    oneDieResult "constant" val
     |> Random.constant
 
 dicePool : Int -> Dice -> Random.Generator RollResult
 dicePool numDice dieTypes =
     toGenerator dieTypes
     |> Random.list numDice
-    |> Random.map combineResults
-    |> Random.map MultipleDice
+    |> Random.map (combineResults (String.fromInt numDice ++ " " ++ dieName dieTypes))
 
  
-combineResults : List RollResult -> DiceResult
-combineResults rollResults = 
+combineResults : String -> List RollResult -> RollResult
+combineResults description rollResults = 
     let
-        val = List.map (\d -> getRollValue d) rollResults |> List.foldl (+) 0
+        val = List.map .value rollResults |> List.foldl (+) 0
     in
-        DiceResult val rollResults
+        manyDieResult description val rollResults
 
-
-getRollValue : RollResult -> Int
-getRollValue rollResult =
-    case rollResult of
-        OneDie d -> d.value
-        MultipleDice m -> m.value
 
 
 andThen : Rules -> Random.Generator RollResult -> Random.Generator RollResult
@@ -154,28 +150,19 @@ handleRule rule =
 
 justResults : List RollResult -> List Int
 justResults rolls =
-    List.map justResult rolls
-
-
-justResult : RollResult -> Int
-justResult rollResult =
-    case rollResult of
-        OneDie d -> 
-            d.value
-        MultipleDice m -> 
-            m.value
+    List.map .value rolls
 
 
 dropLowest : RollResult -> RollResult
-dropLowest rollResult =
-    case rollResult of
-        OneDie d ->
-            OneDie {d | value = 2 }
-        MultipleDice m ->
+dropLowest result =
+    case result.children of
+        Empty ->
+            RollResult "No Dice" 0 Empty
+        RollResults rolls ->
             let
-                newValue = List.map getRollValue m.rolls
+                newValue = List.map .value rolls
                     |> List.minimum
                     |> Maybe.withDefault 0
-                    |> (-) m.value
+                    |> (-) result.value
             in
-                MultipleDice {m | value = newValue }
+                {result | value = newValue }

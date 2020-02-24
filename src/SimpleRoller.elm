@@ -24,9 +24,9 @@ init =
     ( { rolls = [ ]}
     , Cmd.none
     )
+ 
 
-
-
+ 
 -- MODEL
 
 
@@ -48,7 +48,7 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         RollDice num dice ->
-            ( model
+            ( model 
             , rollDicePoolNTimes num dice
             )
         RollResult newRolls ->
@@ -73,7 +73,7 @@ plusRoll : Dice
 plusRoll =
     roll 3 D6
     |> andThen DropLowest
-    |> plus (roll 2 D4)
+    |> plus (roll 2 statGen)
     |> Custom "3D6 Drop Lowest plus 2D4"
 
 rResultToString : (List RollResult) -> String
@@ -83,15 +83,15 @@ rResultToString results =
 
 rollToString : RollResult -> String
 rollToString result =
-    case result of
-        OneDie d ->
-            d.dieType ++ ":  " ++ (String.fromInt d.value)
-        MultipleDice m ->
-            (String.fromInt m.value) ++ ":  Rolls:  " ++ (rResultToString m.rolls)
+    case result.children of
+        Empty ->
+            result.description ++ ":  " ++ (String.fromInt result.value)
+        RollResults rolls ->
+            (String.fromInt result.value) ++ ":  Rolls:  " ++ (rResultToString rolls)
 
-dResultToString : List DieResult -> String
-dResultToString result =
-    List.map (\r -> r.dieType ++ ": " ++ String.fromInt r.value) result
+dResultToString : List RollResult -> String
+dResultToString result = 
+    List.map (\r -> r.description ++ ": " ++ String.fromInt r.value) result
     |> String.join " "
 
 -- VIEW
@@ -133,15 +133,33 @@ diceButton dieType dieName =
 
 renderExpandedResults : List RollResult -> Html Msg
 renderExpandedResults rolls =
-    div [] (List.map renderExpandedResult rolls)
+    div [] (List.map renderRoll rolls)
 
 renderExpandedResult : RollResult -> Html Msg
 renderExpandedResult roll =
-    case roll of
-        OneDie d ->
-            span [style "margin-right" ".5em"] [text <| d.dieType ++ ":  " ++ String.fromInt d.value]
-        MultipleDice m ->
-            div [style "margin-left" "2em"] ([text <| "Value:  " ++ String.fromInt m.value ++ "  Rolls:  "] ++ (List.map renderExpandedResult m.rolls))
+    let
+        valueString = roll.description ++ ":  " ++ String.fromInt roll.value
+    in
+        case roll.children of
+            Empty ->
+                span [style "margin-right" ".5em"] [text <| valueString]
+            RollResults rolls ->
+                div [style "margin-left" "2em"] ([text <| valueString ++ "  Rolls:  "] ++ (List.map renderExpandedResult rolls))
+
+
+renderRoll : RollResult -> Html Msg
+renderRoll roll =
+    let
+        valueString = roll.description ++ ":  " ++ String.fromInt roll.value
+    in
+        case roll.children of
+            Empty ->
+                span [style "margin-right" ".5em"] [text <| valueString]
+            RollResults rolls ->
+                let
+                    children = div [style "margin-left" "2em"] (List.map renderRoll rolls)
+                in
+                    div [] [text <| valueString, children]
 
 -- SUBSCRIPTIONS
 
