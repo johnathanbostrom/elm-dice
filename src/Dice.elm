@@ -1,4 +1,4 @@
-module Dice exposing (Dice(..), roll, Rules(..), andThen, plus, RollResult(..), DieResult, justResults)
+module Dice exposing (Dice(..), roll, Rules(..), andThen, plus, RollResult(..), DieResult, justResults, constant)
 import Random
 import Maybe
 
@@ -11,7 +11,6 @@ type Dice = D4
     | D100
     | DX Int 
     | DicePool Int Dice
-    | Constant Int
     | Custom String (Random.Generator RollResult)
 
 
@@ -34,9 +33,17 @@ type alias DieResult =
     }
 
 
-plus : Random.Generator (List RollResult) -> Random.Generator (List RollResult) -> Random.Generator (List RollResult)
+constant : Int -> Random.Generator RollResult
+constant val =
+    Random.constant val
+    |> Random.map (DieResult "Constant")
+    |> Random.map OneDie
+
+plus : Random.Generator RollResult -> Random.Generator RollResult -> Random.Generator RollResult
 plus diceA diceB =
-    Random.map2 (++) diceA diceB
+    Random.map2 (\a b -> [a,b]) diceA diceB
+    |> Random.map combineResults
+    |> Random.map MultipleDice
 
 
 dX : Int -> Random.Generator RollResult
@@ -50,7 +57,7 @@ roll numDice dieType =
     if numDice > 1 then
         toGenerator <| DicePool numDice dieType
     else if numDice == 0 then
-        toGenerator <| Constant 0
+        constant 0
     else 
         toGenerator dieType
 
@@ -76,8 +83,6 @@ toGenerator dieType =
             dX sides 
         DicePool numDice dieTypes ->
             dicePool numDice dieTypes
-        Constant val ->
-            dConstant val
         Custom _ generator ->
             generator
 
@@ -134,8 +139,6 @@ dieName dieType =
             "D100"
         DX sides->
             "D" ++ String.fromInt sides
-        Constant val ->
-            "Constant: " ++ String.fromInt val
         DicePool numDice dT ->
             String.fromInt numDice ++ "D" ++ dieName dT
         Custom description _ ->

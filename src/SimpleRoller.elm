@@ -69,10 +69,12 @@ statGen =
     |> andThen DropLowest
     |> Custom "4D6 Drop Lowest"
 
-plusRoll : Random.Generator RollResult
+plusRoll : Dice
 plusRoll =
-    roll 2 (DX 4)
-    -- |> plus (roll 2 (DX 6) |> andThen DropLowest)
+    roll 3 D6
+    |> andThen DropLowest
+    |> plus (roll 2 D4)
+    |> Custom "3D6 Drop Lowest plus 2D4"
 
 rResultToString : (List RollResult) -> String
 rResultToString results =
@@ -121,7 +123,7 @@ diceButtons =
         , diceButton D100 "D100"
         , diceButton (DicePool 3 D6) "3D6"
         , diceButton statGen "statGen"
-        -- , diceButton plusRoll "2"
+        , diceButton plusRoll "2"
         ]
 
 diceButton : Dice -> String -> Html Msg
