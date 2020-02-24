@@ -49,7 +49,7 @@ update msg model =
     case msg of
         RollDice num dice ->
             ( model
-            , rollDice num dice
+            , rollDicePoolNTimes num dice
             )
         RollResult newRolls ->
             ( {model | rolls = newRolls }
@@ -57,23 +57,22 @@ update msg model =
             )
 
 
-rollDice : Int -> Dice -> Cmd Msg
-rollDice num dieType =
-    roll num dieType
+rollDicePoolNTimes : Int -> Dice -> Cmd Msg
+rollDicePoolNTimes num dieType =
+    roll 1 dieType
+    |> Random.list num
     |> Random.generate RollResult
 
 statGen : Dice
 statGen =
     roll 4 D6
-    -- |> andThen DropLowest
-    -- |> andThen CombineResults
-    |> DCustom
+    |> andThen DropLowest
+    |> Custom "4D6 Drop Lowest"
 
-plusRoll : Dice
+plusRoll : Random.Generator RollResult
 plusRoll =
     roll 2 (DX 4)
     -- |> plus (roll 2 (DX 6) |> andThen DropLowest)
-    |> DCustom
 
 rResultToString : (List RollResult) -> String
 rResultToString results =
@@ -120,9 +119,9 @@ diceButtons =
         , diceButton D12 "D12"
         , diceButton D20 "D20"
         , diceButton D100 "D100"
-        , diceButton (DCustom (roll 2 (DCustom <| roll 2 (DCustom <| roll 2 statGen)))) "3D6"
+        , diceButton (DicePool 3 D6) "3D6"
         , diceButton statGen "statGen"
-        , diceButton plusRoll "2"
+        -- , diceButton plusRoll "2"
         ]
 
 diceButton : Dice -> String -> Html Msg

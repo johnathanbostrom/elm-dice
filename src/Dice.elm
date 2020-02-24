@@ -1,7 +1,6 @@
 module Dice exposing (Dice(..), roll, Rules(..), andThen, plus, RollResult(..), DieResult, justResults)
 import Random
-
---(Int, List Int)
+import Maybe
 
 type Dice = D4
     | D6
@@ -11,8 +10,10 @@ type Dice = D4
     | D20
     | D100
     | DX Int 
-    | DCustom (Random.Generator (List RollResult))
+    | DicePool Int Dice
     | Constant Int
+    | Custom String (Random.Generator RollResult)
+
 
 type Rules = DropLowest
 
@@ -26,14 +27,17 @@ type alias DiceResult =
     , rolls: List RollResult
     }
 
+
 type alias DieResult =
     { dieType: String
     , value: Int
     }
 
+
 plus : Random.Generator (List RollResult) -> Random.Generator (List RollResult) -> Random.Generator (List RollResult)
 plus diceA diceB =
     Random.map2 (++) diceA diceB
+
 
 dX : Int -> Random.Generator RollResult
 dX sides = 
@@ -41,9 +45,15 @@ dX sides =
     |> Random.map (DieResult ("D" ++ String.fromInt sides))
     |> Random.map OneDie
 
-roll : Int -> Dice -> Random.Generator (List RollResult)
+roll : Int -> Dice -> Random.Generator RollResult
 roll numDice dieType =
-    Random.list numDice (toGenerator dieType)
+    if numDice > 1 then
+        toGenerator <| DicePool numDice dieType
+    else if numDice == 0 then
+        toGenerator <| Constant 0
+    else 
+        toGenerator dieType
+
 
 toGenerator : Dice -> Random.Generator RollResult
 toGenerator dieType =
@@ -64,23 +74,33 @@ toGenerator dieType =
             dX 100
         DX sides->
             dX sides 
-        DCustom generator ->
-            dCustom generator
+        DicePool numDice dieTypes ->
+            dicePool numDice dieTypes
         Constant val ->
-            Random.constant (OneDie (DieResult "constant" val))
+            dConstant val
+        Custom _ generator ->
+            generator
 
-dCustom : Random.Generator (List RollResult) -> Random.Generator RollResult
-dCustom roller =
-    Random.map combineResults roller
+dConstant : Int -> Random.Generator RollResult
+dConstant val =
+    OneDie (DieResult "constant" val)
+    |> Random.constant
+
+dicePool : Int -> Dice -> Random.Generator RollResult
+dicePool numDice dieTypes =
+    toGenerator dieTypes
+    |> Random.list numDice
+    |> Random.map combineResults
     |> Random.map MultipleDice
 
-
+ 
 combineResults : List RollResult -> DiceResult
 combineResults rollResults = 
     let
         val = List.map (\d -> getRollValue d) rollResults |> List.foldl (+) 0
     in
         DiceResult val rollResults
+
 
 getRollValue : RollResult -> Int
 getRollValue rollResult =
@@ -89,9 +109,10 @@ getRollValue rollResult =
         MultipleDice m -> m.value
 
 
-andThen : Rules -> Random.Generator (List RollResult) -> Random.Generator (List RollResult)
-andThen action generator =
-    Random.map (handleRule action) generator
+andThen : Rules -> Random.Generator RollResult -> Random.Generator RollResult
+andThen rule rolls =
+    rolls 
+    |> Random.map (handleRule rule)
 
 
 dieName : Dice -> String
@@ -112,28 +133,26 @@ dieName dieType =
         D100 ->
             "D100"
         DX sides->
-            "D" ++ (String.fromInt sides)
-        DCustom generator ->
-            "Custom"
+            "D" ++ String.fromInt sides
         Constant val ->
-            "Constant: " ++ (String.fromInt val)
+            "Constant: " ++ String.fromInt val
+        DicePool numDice dT ->
+            String.fromInt numDice ++ "D" ++ dieName dT
+        Custom description _ ->
+            description
 
 
-handleRules : List Rules -> Random.Generator (List RollResult) -> Random.Generator (List RollResult)
-handleRules rules rollGenerator =
-    List.map handleRule rules
-    |>  List.foldl Random.map rollGenerator
-
-
-handleRule : Rules -> (List RollResult -> List RollResult)
+handleRule : Rules -> RollResult -> RollResult
 handleRule rule =
     case rule of
         DropLowest -> 
             dropLowest
 
+
 justResults : List RollResult -> List Int
 justResults rolls =
     List.map justResult rolls
+
 
 justResult : RollResult -> Int
 justResult rollResult =
@@ -143,8 +162,17 @@ justResult rollResult =
         MultipleDice m -> 
             m.value
 
-dropLowest : List RollResult -> List RollResult
-dropLowest rolls =
-    rolls
-    |> List.sortBy getRollValue
-    |> List.drop 1
+
+dropLowest : RollResult -> RollResult
+dropLowest rollResult =
+    case rollResult of
+        OneDie d ->
+            OneDie {d | value = 2 }
+        MultipleDice m ->
+            let
+                newValue = List.map getRollValue m.rolls
+                    |> List.minimum
+                    |> Maybe.withDefault 0
+                    |> (-) m.value
+            in
+                MultipleDice {m | value = newValue }
