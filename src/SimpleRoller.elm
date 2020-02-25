@@ -73,8 +73,33 @@ plusRoll : Dice
 plusRoll =
     roll 3 D6
     |> andThen DropLowest
-    |> plus (roll 2 statGen)
+    |> plus (roll 2 D4)
     |> Custom "3D6 Drop Lowest plus 2D4"
+
+succeedOnEightRoll : Dice
+succeedOnEightRoll =
+    roll 6 explodingD10
+    |> Custom "exploding Dice"
+
+explodingD10 : Dice 
+explodingD10 = 
+    roll 1 D10  
+    |> andThen (ExplodeIf (\x -> x > 9))
+    |> andThen (CountSuccessesIf (\x -> x > 7))
+    |> Custom "exploding Dice"
+
+aT : Dice
+aT =
+    roll 3 D6   
+    |> andThen (Do (\x -> Random.constant {x | value = -100}))
+    |> Custom "test"
+
+
+rerollIf : Dice
+rerollIf =
+    roll 1 statGen
+    |> andThen (RerollIf (\x -> x < 10) High)
+    |> Custom "reroll < 3"
 
 rResultToString : (List RollResult) -> String
 rResultToString results =
@@ -117,18 +142,21 @@ diceButtons =
         [ diceButton D4 "D4" 
         , diceButton D6 "D6"
         , diceButton D8 "D8"
-        , diceButton D10 "D10"
+        , diceButton D10 "D10" 
         , diceButton D12 "D12"
         , diceButton D20 "D20"
         , diceButton D100 "D100"
         , diceButton (DicePool 3 D6) "3D6"
         , diceButton statGen "statGen"
         , diceButton plusRoll "2"
+        , diceButton succeedOnEightRoll "5D10 Succeed on 8"
+        , diceButton aT "Test"
+        , diceButton rerollIf "reroll"
         ]
 
 diceButton : Dice -> String -> Html Msg
 diceButton dieType dieName =
-    button [ onClick <| RollDice 6 dieType ] [text dieName]
+    button [ onClick <| RollDice 1 dieType ] [text dieName]
 
 
 renderExpandedResults : List RollResult -> Html Msg

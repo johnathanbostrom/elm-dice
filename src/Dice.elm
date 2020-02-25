@@ -1,6 +1,7 @@
-module Dice exposing (Dice(..), roll, Rules(..), andThen, plus, RollResult, RollResults(..), justResults, constant)
+module Dice exposing (Dice(..), roll, Rules(..), andThen, plus, RollResult, RollResults(..), justResults, constant, Keep(..))
 import Random
 import Maybe
+import List.Extra exposing (maximumBy, minimumBy)
 
 type Dice = D4
     | D6
@@ -15,6 +16,11 @@ type Dice = D4
 
 
 type Rules = DropLowest
+    | CountSuccessesIf (Int -> Bool)
+    | ExplodeIf (Int -> Bool)
+    | RerollIf (Int -> Bool) Keep
+    --|EndlessRerollIf (Int -> Bool) Keep 
+    | Do (RollResult -> Random.Generator RollResult)
 
 type RollResults = Empty
     | RollResults (List RollResult)
@@ -58,6 +64,13 @@ roll numDice dieType =
         constant 0
     else 
         toGenerator dieType
+
+
+toDie : String -> Random.Generator Int -> Dice
+toDie description generator =
+    Random.map (oneDieResult description) generator
+    |>  Custom description
+
 
 
 toGenerator : Dice -> Random.Generator RollResult
@@ -112,9 +125,17 @@ combineResults description rollResults =
 
 andThen : Rules -> Random.Generator RollResult -> Random.Generator RollResult
 andThen rule rolls =
-    rolls 
-    |> Random.map (handleRule rule)
-
+    case rule of
+        DropLowest -> 
+            Random.map dropLowest rolls
+        CountSuccessesIf test ->
+            Random.map (countSuccessesIf test) rolls
+        ExplodeIf test ->   
+            explodeIf test rolls   
+        RerollIf test keep ->
+            rerollIf test keep rolls
+        Do action ->
+            Random.andThen action rolls
 
 dieName : Dice -> String
 dieName dieType =
@@ -141,16 +162,83 @@ dieName dieType =
             description
 
 
-handleRule : Rules -> RollResult -> RollResult
-handleRule rule =
-    case rule of
-        DropLowest -> 
-            dropLowest
-
 
 justResults : List RollResult -> List Int
 justResults rolls =
     List.map .value rolls
+
+--andThen helpers
+
+--TODO: reroll keep high, low.  How many times?
+type Keep = Low
+    | High
+    | New
+    | KeepCustom (List RollResult -> RollResult)
+
+rerollIf : (Int -> Bool) -> Keep -> Random.Generator RollResult -> Random.Generator RollResult
+rerollIf test keep generator =
+    generator
+    |> Random.andThen (reroll generator test)
+    |> Random.map (combineResults "Reroll")
+    |> Random.map (chooseReroll keep)
+
+reroll : Random.Generator RollResult -> (Int -> Bool) -> RollResult -> Random.Generator (List RollResult)
+reroll generator test rollResult =
+    if test rollResult.value then
+        Random.constant rollResult
+        |> Random.list 1                
+        |> Random.map2 (::) generator
+    else
+        Random.constant rollResult
+        |> Random.list 1    
+
+
+chooseReroll : Keep -> RollResult -> RollResult
+chooseReroll keep rollResult =
+    case rollResult.children of
+        Empty ->
+            rollResult
+        RollResults rolls ->
+            let
+                keptRoll =
+                    case keep of
+                        High ->
+                            List.map .value rolls
+                            |> List.maximum
+                            |> Maybe.withDefault 0
+                        Low ->
+                            List.map .value rolls
+                            |> List.minimum
+                            |> Maybe.withDefault 0
+                        New -> 
+                            List.map .value rolls
+                            |> List.head
+                            |> Maybe.withDefault 0
+                        KeepCustom action ->
+                            (action rolls).value
+            in
+                {rollResult | value = keptRoll}
+            
+
+
+
+
+explodeIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
+explodeIf test generator =
+    generator
+    |> Random.andThen (explode generator test)
+    |> Random.map (combineResults "Explode!")
+
+
+explode : Random.Generator RollResult -> (Int -> Bool) -> RollResult -> Random.Generator (List RollResult)
+explode generator test rollResult =
+    if test rollResult.value then
+        Random.constant rollResult
+        |> Random.list 1                
+        |> Random.map2 (++) (generator |> Random.andThen (explode generator test))
+    else 
+        Random.constant rollResult
+        |> Random.list 1
 
 
 dropLowest : RollResult -> RollResult
@@ -166,3 +254,24 @@ dropLowest result =
                     |> (-) result.value
             in
                 {result | value = newValue }
+
+countSuccessesIf : (Int -> Bool) -> RollResult -> RollResult
+countSuccessesIf test rollResult =
+    let
+        successes =
+            case rollResult.children of
+                Empty ->
+                    succeedVal test rollResult
+                RollResults rolls ->
+                    List.map (succeedVal test) rolls
+                    |> List.sum
+    in
+        {rollResult | value = successes}
+    
+
+succeedVal : (Int -> Bool) -> RollResult -> Int
+succeedVal test rollResult =
+    if test rollResult.value then
+        1
+    else 
+        0
