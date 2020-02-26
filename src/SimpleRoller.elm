@@ -24,7 +24,7 @@ main =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { rolls = Nothing }
+    ( { rolls = [] }
     , Cmd.none
     )
 
@@ -34,7 +34,7 @@ init =
 
 
 type alias Model =
-    { rolls : Maybe RollResult
+    { rolls : List RollResult
     }
 
 
@@ -44,7 +44,7 @@ type alias Model =
 
 type Msg
     = RollDice Int Dice
-    | RollResult RollResult
+    | RollResult (List RollResult)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -56,28 +56,29 @@ update msg model =
             )
 
         RollResult newRolls ->
-            ( { model | rolls = Just newRolls }
+            ( { model | rolls = newRolls }
             , Cmd.none
             )
 
 
 rollDice : Int -> Dice -> Cmd Msg
-rollDice num dieType =
-    roll num dieType
+rollDice num roller =
+    roll 1 roller
+        |> Random.list num
         |> Random.generate RollResult
 
 
 statGen : Dice
 statGen =
     roll 4 D6
-        |> andThen DropLowest
+        |> dropLowest
         |> Custom "4D6 Drop Lowest"
 
 
 plusRoll : Dice
 plusRoll =
     roll 3 D6
-        |> andThen DropLowest
+        |> dropLowest
         |> plus (roll 2 D4)
         |> Custom "3D6 Drop Lowest plus 2D4"
 
@@ -91,22 +92,22 @@ succeedOnEightRoll =
 explodingD10 : Dice
 explodingD10 =
     roll 1 D10
-        |> andThen (ExplodeIf (\x -> x > 9))
-        |> andThen (CountSuccessesIf (\x -> x > 7))
+        |> explodeIf (\x -> x > 9)
+        |> countSuccessesIf (\x -> x > 7)
         |> Custom "exploding Dice"
 
 
 aT : Dice
 aT =
     roll 3 D6
-        |> andThen (Do (\x -> Random.constant { x | value = -100 }))
+        |> andThen (\x -> Random.constant { x | value = -100 })
         |> Custom "test"
 
 
-rerollIf : Dice
-rerollIf =
+rerollDice : Dice
+rerollDice =
     roll 1 statGen
-        |> andThen (RerollIf (\x -> x < 16) High)
+        |> rerollIf (\x -> x < 16) High
         |> Custom "reroll < 3"
 
 
@@ -134,25 +135,23 @@ dResultToString result =
 
 
 -- VIEW
-
-
 view : Model -> Html Msg
 view model =
     div [] [ renderDice model ]
 
 
 renderDice : Model -> Html Msg
-renderDice model =
+renderDice model = 
     case model.rolls of
-        Nothing ->
+        [] ->
             div [] [ text "Click A Button To Roll Dice", diceButtons ]
 
-        Just rolls ->
+        _ ->
             div
                 []
-                [ text <| String.join "  " <| List.map String.fromInt <| justResults rolls
+                [ text <| String.join "  " <| List.map (\r -> String.fromInt r.value) model.rolls
                 , diceButtons
-                , renderExpandedResult rolls
+                , renderExpandedResults model.rolls
                 ]
 
 
@@ -171,7 +170,7 @@ diceButtons =
         , diceButton plusRoll "2"
         , diceButton succeedOnEightRoll "Exploding Dice Succeed on 8"
         , diceButton aT "Test"
-        , diceButton rerollIf "reroll"
+        -- , diceButton reroll "reroll"
         ]
 
 
@@ -181,9 +180,9 @@ diceButton dieType dieName =
 
 
 
--- renderExpandedResults : List RollResult -> Html Msg
--- renderExpandedResults rolls =
---     div [] (List.map renderRoll rolls)
+renderExpandedResults : List RollResult -> Html Msg
+renderExpandedResults rolls =
+    div [] (List.map renderRoll rolls)
 
 
 renderExpandedResult : RollResult -> Html Msg

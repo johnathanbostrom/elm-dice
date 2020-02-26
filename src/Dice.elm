@@ -1,7 +1,7 @@
 module Dice exposing
     ( roll, Dice(..), RollResult, ChildrenRolls(..)
-    , andThen, Rules(..), Keep(..), plus
-    , toDie
+    , andThen, dropLowest, countSuccessesIf, explodeIf, rerollIf, Keep(..), plus
+    , toRollResult
     )
 
 {-| A Dice Roller Package based on elm/random that allows you to build customizable dice rolling functions in a readable way.
@@ -14,16 +14,16 @@ module Dice exposing
 
 # Combining and Transforming Rolls
 
-@docs andThen, Rules, Keep, plus
+@docs dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep, plus
 
 
 # Common Helpers
 
-@docs toDie
+@docs toRollResult
 
 -}
 
-import List.Extra exposing (maximumBy, minimumBy)
+import List.Extra exposing (maximumBy, minimumBy, count)
 import Maybe
 import Random
 
@@ -33,9 +33,9 @@ import Random
     -- A 5 sided die.
     d5 = DX 5
 
-    -- A custom die with values from 3 to 12. see toDie
+    -- A custom die with values from 3 to 12.
     Random.int 3 12
-    |> toDie
+    |> toRollResult
     |> Custom "D3To12"
 
     -- A Constant Value
@@ -54,36 +54,6 @@ type Dice
     | DicePool Int Dice
     | Custom String (Random.Generator RollResult)
     | Constant String Int
-
-
-{-| Rules for chaining together rolls and building more complex die rolls. You can create custom rules with Do.
-    --rolls four six sided dice, then drops the lowest die
-       roll 3 D6 |> andThen DropLowest
-
-    --rolls eight ten sided dice, then counts how many came up 8 or higher.
-        roll 8 D10 |> andThen CountSuccessesIf (\r -> r > 7)
-
-    --defines a ten sided die that "explodes" on a 10.  This die will keep rolling for as long as it rolls a ten.
-        explodingDie = roll 1 D10
-            |> andThen ExplodeIf ((==) 10)
-
-    --rolls eight exploding dice, then counts how many came up 8 or higher.
-        roll 5 explodingDie
-        |> andThen CountSuccessesIf (\r -> r > 7)
-
-    --rolls 2 six sided dice. Then rerolls any ones or twos, keeping the new result even if lower.  For instance, on a roll of 5 and 2, the two would be rerolled.
-    --If the new roll came up a 1, the result would be 6 (5 and 1).
-        roll 2 D6
-        |> andThen RerollIf (\r -> r < 2)
-
--}
-type Rules
-    = DropLowest
-    | CountSuccessesIf (Int -> Bool)
-    | ExplodeIf (Int -> Bool)
-    | RerollIf (Int -> Bool) Keep
-    | Do (RollResult -> Random.Generator RollResult)
-
 
 {-| represents the children of a RollResult.
 -}
@@ -165,36 +135,82 @@ plus diceA diceB =
     Random.map2 (\a b -> combineResults (a.description ++ " + " ++ b.description) [ a, b ]) diceA diceB
 
 
-{-| used to apply transformations to RollResult generators. Some common rolling rules are defined, and you can create your own with [`Do`](#Rules). -}
-andThen : Rules -> Random.Generator RollResult -> Random.Generator RollResult
-andThen rule rolls =
-    case rule of
-        DropLowest ->
-            Random.map dropLowest rolls
+{-| used to apply transformations to RollResult generators. -}
+andThen : (RollResult -> Random.Generator RollResult) -> Random.Generator RollResult -> Random.Generator RollResult
+andThen generator result =
+    Random.andThen generator result
 
-        CountSuccessesIf test ->
-            Random.map (countSuccessesIf test) rolls
+{-| Recalculates the value of a RollResult by dropping the lowest value of its children.
+If the RollResult had no children (because it was the result of a single die roll or constant value),
+Then dropLowest will set the value to zero. 
 
-        ExplodeIf test ->
-            explodeIf test rolls
+    4D6 = roll 4 D6 |> dropLowest
+-}
+dropLowest: Random.Generator RollResult -> Random.Generator RollResult
+dropLowest rolls =
+    Random.map dropLowestRoll rolls
 
-        RerollIf test keep ->
-            rerollIf test keep rolls
 
-        Do action ->
-            Random.andThen action rolls
+{-| Recalculates the value of a RollResult by counting the number of children that pass the test.
+
+        roll 8 D10 |> andThen CountSuccessesIf (\r -> r > 7)
+-}
+countSuccessesIf: (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
+countSuccessesIf test generator =
+    Random.map (successes test) generator
+
+{-| "explodes" a RollResult.  An exploding die will keep rolling as long as it satisfies the predicate.  For instance, if you roll a 10 on the following D10, you will roll again and add the rolls together.  If your reroll is another D10, you repeat this process.
+  
+    --defines a ten sided die that "explodes" on a 10.
+    explodingDie = roll 1 D10
+        |> andThen ExplodeIf ((==) 10)
+-}
+explodeIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
+explodeIf test generator =
+    generator
+        |> Random.andThen (explode generator test)
+        |> Random.map (combineResults "Explode!")
+
+{-| Rerolls a RollResult if it satisfies the given predicate.
+  The value of one roll will be kept using the Keep rules specified.  
+
+    -- rerolls any ones or twos, keeping the new result even if lower.
+        roll 2 D6
+        |> andThen RerollIf (\r -> r < 2) New
+-}
+rerollIf : (Int -> Bool) -> Keep -> Random.Generator RollResult -> Random.Generator RollResult
+rerollIf test keep generator =
+    generator
+        |> Random.andThen (reroll generator test)
+        |> Random.map (combineResults "Reroll")
+        |> Random.map (chooseReroll keep)
 
 
 {-| Converts a Random.Generator Int into a Random.Generator RollResult.
 -}
-toDie : String -> Random.Generator Int -> Random.Generator RollResult
-toDie description generator =
+toRollResult : String -> Random.Generator Int -> Random.Generator RollResult
+toRollResult description generator =
     Random.map (oneDieResult description) generator
 
 
 
 -- Local Functions
 
+
+successes : (Int -> Bool) -> RollResult -> RollResult
+successes test rollResult =
+    let
+        num =
+            case rollResult.children of
+                Empty ->
+                    if test rollResult.value then 
+                        1
+                    else
+                        0
+                RollResults rolls ->
+                    count (\r -> test r.value) rolls
+    in
+    { rollResult | value = num }
 
 oneDieResult : String -> Int -> RollResult
 oneDieResult desc val =
@@ -319,14 +335,6 @@ dieName dieType =
             description
 
 
-rerollIf : (Int -> Bool) -> Keep -> Random.Generator RollResult -> Random.Generator RollResult
-rerollIf test keep generator =
-    generator
-        |> Random.andThen (reroll generator test)
-        |> Random.map (combineResults "Reroll")
-        |> Random.map (chooseReroll keep)
-
-
 reroll : Random.Generator RollResult -> (Int -> Bool) -> RollResult -> Random.Generator (List RollResult)
 reroll generator test rollResult =
     if test rollResult.value then
@@ -370,13 +378,6 @@ chooseReroll keep rollResult =
             { rollResult | value = keptRoll }
 
 
-explodeIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
-explodeIf test generator =
-    generator
-        |> Random.andThen (explode generator test)
-        |> Random.map (combineResults "Explode!")
-
-
 explode : Random.Generator RollResult -> (Int -> Bool) -> RollResult -> Random.Generator (List RollResult)
 explode generator test rollResult =
     if test rollResult.value then
@@ -389,8 +390,8 @@ explode generator test rollResult =
             |> Random.list 1
 
 
-dropLowest : RollResult -> RollResult
-dropLowest result =
+dropLowestRoll : RollResult -> RollResult
+dropLowestRoll result =
     case result.children of
         Empty ->
             { result | value = 0 }
@@ -405,26 +406,3 @@ dropLowest result =
             in
             { result | value = newValue }
 
-
-countSuccessesIf : (Int -> Bool) -> RollResult -> RollResult
-countSuccessesIf test rollResult =
-    let
-        successes =
-            case rollResult.children of
-                Empty ->
-                    succeedVal test rollResult
-
-                RollResults rolls ->
-                    List.map (succeedVal test) rolls
-                        |> List.sum
-    in
-    { rollResult | value = successes }
-
-
-succeedVal : (Int -> Bool) -> RollResult -> Int
-succeedVal test rollResult =
-    if test rollResult.value then
-        1
-
-    else
-        0
