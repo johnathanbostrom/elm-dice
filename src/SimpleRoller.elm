@@ -24,7 +24,7 @@ main =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { rolls = [] }
+    ( { rolls = Nothing }
     , Cmd.none
     )
 
@@ -34,7 +34,7 @@ init =
 
 
 type alias Model =
-    { rolls : List RollResult
+    { rolls : Maybe RollResult
     }
 
 
@@ -44,7 +44,7 @@ type alias Model =
 
 type Msg
     = RollDice Int Dice
-    | RollResult (List RollResult)
+    | RollResult RollResult
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -52,19 +52,18 @@ update msg model =
     case msg of
         RollDice num dice ->
             ( model
-            , rollDicePoolNTimes num dice
+            , rollDice num dice
             )
 
         RollResult newRolls ->
-            ( { model | rolls = newRolls }
+            ( { model | rolls = Just newRolls }
             , Cmd.none
             )
 
 
-rollDicePoolNTimes : Int -> Dice -> Cmd Msg
-rollDicePoolNTimes num dieType =
-    roll 1 dieType
-        |> Random.list num
+rollDice : Int -> Dice -> Cmd Msg
+rollDice num dieType =
+    roll num dieType
         |> Random.generate RollResult
 
 
@@ -85,7 +84,7 @@ plusRoll =
 
 succeedOnEightRoll : Dice
 succeedOnEightRoll =
-    roll 10 explodingD10
+    roll 1 explodingD10
         |> Custom "Successes"
 
 
@@ -144,12 +143,17 @@ view model =
 
 renderDice : Model -> Html Msg
 renderDice model =
-    div
-        []
-        [ text <| String.join "  " <| List.map String.fromInt <| justResults model.rolls
-        , diceButtons
-        , renderExpandedResults model.rolls
-        ]
+    case model.rolls of
+        Nothing ->
+            div [] [ text "Click A Button To Roll Dice", diceButtons ]
+
+        Just rolls ->
+            div
+                []
+                [ text <| String.join "  " <| List.map String.fromInt <| justResults rolls
+                , diceButtons
+                , renderExpandedResult rolls
+                ]
 
 
 diceButtons : Html Msg
@@ -165,7 +169,7 @@ diceButtons =
         , diceButton (DicePool 3 D6) "3D6"
         , diceButton statGen "statGen"
         , diceButton plusRoll "2"
-        , diceButton succeedOnEightRoll "5D10 Succeed on 8"
+        , diceButton succeedOnEightRoll "Exploding Dice Succeed on 8"
         , diceButton aT "Test"
         , diceButton rerollIf "reroll"
         ]
@@ -176,9 +180,10 @@ diceButton dieType dieName =
     button [ onClick <| RollDice 6 dieType ] [ text dieName ]
 
 
-renderExpandedResults : List RollResult -> Html Msg
-renderExpandedResults rolls =
-    div [] (List.map renderRoll rolls)
+
+-- renderExpandedResults : List RollResult -> Html Msg
+-- renderExpandedResults rolls =
+--     div [] (List.map renderRoll rolls)
 
 
 renderExpandedResult : RollResult -> Html Msg
