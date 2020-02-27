@@ -63,16 +63,17 @@ update msg model =
 
 rollDice : Int -> Dice -> Cmd Msg
 rollDice num roller =
-    roll 1 roller
-        |> Random.list num
-        |> Random.generate RollResult
+    roll 3 explodingD10 |> Random.list 1 |> Random.generate RollResult
+    -- roll 1 roller
+    --     |> Random.list num 
+    --     |> Random.generate RollResult
 
 
 statGen : Dice
 statGen =
     roll 4 D6
         |> dropLowest
-        |> Custom "4D6 Drop Lowest"
+        |> CustomDie "4D6 Drop Lowest"
 
 
 plusRoll : Dice
@@ -80,35 +81,35 @@ plusRoll =
     roll 3 D6
         |> dropLowest
         |> plus (roll 2 D4)
-        |> Custom "3D6 Drop Lowest plus 2D4"
+        |> CustomDie "3D6 Drop Lowest plus 2D4"
 
 
 succeedOnEightRoll : Dice
 succeedOnEightRoll =
     roll 1 explodingD10
-        |> Custom "Successes"
+        |> CustomDie "Successes"
 
 
 explodingD10 : Dice
 explodingD10 =
-    roll 1 D10
+    roll 1 D10 
         |> explodeIf (\x -> x > 9)
-        |> countSuccessesIf (\x -> x > 7)
-        |> Custom "exploding Dice"
+        -- |> countSuccessesIf (\x -> x > 7)
+        |> CustomDie "exploding Dice"
 
 
 aT : Dice
 aT =
     roll 3 D6
         |> andThen (\x -> Random.constant { x | value = -100 })
-        |> Custom "test"
+        |> CustomDie "test"
 
 
 rerollDice : Dice
 rerollDice =
     roll 1 statGen
         |> rerollIf (\x -> x < 16) High
-        |> Custom "reroll < 3"
+        |> CustomDie "reroll < 3"
 
 
 rResultToString : List RollResult -> String
@@ -165,12 +166,11 @@ diceButtons =
         , diceButton D12 "D12"
         , diceButton D20 "D20"
         , diceButton D100 "D100"
-        , diceButton (DicePool 3 D6) "3D6"
+        , diceButton (roll 3 D6 |> CustomDie "3D6") "3D6"
         , diceButton statGen "statGen"
         , diceButton plusRoll "2"
         , diceButton succeedOnEightRoll "Exploding Dice Succeed on 8"
         , diceButton aT "Test"
-        -- , diceButton reroll "reroll"
         ]
 
 

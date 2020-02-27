@@ -1,6 +1,6 @@
 module Dice exposing
     ( roll, Dice(..), RollResult, ChildrenRolls(..)
-    , andThen, dropLowest, countSuccessesIf, explodeIf, rerollIf, Keep(..), plus
+    , dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep(..), plus
     , toRollResult
     )
 
@@ -23,7 +23,7 @@ module Dice exposing
 
 -}
 
-import List.Extra exposing (maximumBy, minimumBy, count)
+import List.Extra exposing (count, maximumBy, minimumBy)
 import Maybe
 import Random
 
@@ -51,9 +51,9 @@ type Dice
     | D20
     | D100
     | DX Int
-    | DicePool Int Dice
-    | Custom String (Random.Generator RollResult)
+    | CustomDie String (Random.Generator RollResult)
     | Constant String Int
+
 
 {-| represents the children of a RollResult.
 -}
@@ -105,7 +105,9 @@ type alias RollResult =
 roll : Int -> Dice -> Random.Generator RollResult
 roll numDice dieType =
     if numDice > 1 then
-        toGenerator <| DicePool numDice dieType
+        toGenerator dieType
+            |> Random.list numDice
+            |> Random.map (combineResults (String.fromInt numDice ++ " " ++ dieName dieType))
 
     else if numDice <= 0 then
         constant 0
@@ -135,35 +137,44 @@ plus diceA diceB =
     Random.map2 (\a b -> combineResults (a.description ++ " + " ++ b.description) [ a, b ]) diceA diceB
 
 
-{-| used to apply transformations to RollResult generators. -}
+{-| used to apply transformations to RollResult generators.
+-}
 andThen : (RollResult -> Random.Generator RollResult) -> Random.Generator RollResult -> Random.Generator RollResult
 andThen generator result =
     Random.andThen generator result
 
+
 {-| Recalculates the value of a RollResult by dropping the lowest value of its children.
 If the RollResult had no children (because it was the result of a single die roll or constant value),
-Then dropLowest will set the value to zero. 
+Then dropLowest will set the value to zero.
 
-    4D6 = roll 4 D6 |> dropLowest
+    statGenerator =
+        roll 4 D6 |> dropLowest
+
 -}
-dropLowest: Random.Generator RollResult -> Random.Generator RollResult
+dropLowest : Random.Generator RollResult -> Random.Generator RollResult
 dropLowest rolls =
     Random.map dropLowestRoll rolls
 
 
 {-| Recalculates the value of a RollResult by counting the number of children that pass the test.
 
-        roll 8 D10 |> andThen CountSuccessesIf (\r -> r > 7)
+        roll 3 D10 
+            |> countSuccessesIf (\r -> r > 7)
+
 -}
-countSuccessesIf: (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
+countSuccessesIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
 countSuccessesIf test generator =
     Random.map (successes test) generator
 
-{-| "explodes" a RollResult.  An exploding die will keep rolling as long as it satisfies the predicate.  For instance, if you roll a 10 on the following D10, you will roll again and add the rolls together.  If your reroll is another D10, you repeat this process.
-  
+
+{-| "explodes" a RollResult. An exploding die will keep rolling as long as it satisfies the predicate. For instance, if you roll a 10 on the following D10, you will roll again and add the rolls together. If your reroll is another D10, you repeat this process.
+
     --defines a ten sided die that "explodes" on a 10.
-    explodingDie = roll 1 D10
-        |> andThen ExplodeIf ((==) 10)
+    explodingDie =
+        roll 1 D10
+            |> andThen ExplodeIf ((==) 10)
+
 -}
 explodeIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
 explodeIf test generator =
@@ -171,12 +182,14 @@ explodeIf test generator =
         |> Random.andThen (explode generator test)
         |> Random.map (combineResults "Explode!")
 
+
 {-| Rerolls a RollResult if it satisfies the given predicate.
-  The value of one roll will be kept using the Keep rules specified.  
+The value of one roll will be kept using the Keep rules specified.
 
     -- rerolls any ones or twos, keeping the new result even if lower.
         roll 2 D6
         |> andThen RerollIf (\r -> r < 2) New
+
 -}
 rerollIf : (Int -> Bool) -> Keep -> Random.Generator RollResult -> Random.Generator RollResult
 rerollIf test keep generator =
@@ -203,14 +216,17 @@ successes test rollResult =
         num =
             case rollResult.children of
                 Empty ->
-                    if test rollResult.value then 
+                    if test rollResult.value then
                         1
+
                     else
                         0
+
                 RollResults rolls ->
                     count (\r -> test r.value) rolls
     in
     { rollResult | value = num }
+
 
 oneDieResult : String -> Int -> RollResult
 oneDieResult desc val =
@@ -261,10 +277,7 @@ toGenerator dieType =
         DX sides ->
             dX sides
 
-        DicePool numDice dieTypes ->
-            dicePool numDice dieTypes
-
-        Custom description generator ->
+        CustomDie description generator ->
             dCustom description generator
 
         Constant _ val ->
@@ -325,10 +338,7 @@ dieName dieType =
         DX sides ->
             "D" ++ String.fromInt sides
 
-        DicePool numDice dT ->
-            String.fromInt numDice ++ "D" ++ dieName dT
-
-        Custom description _ ->
+        CustomDie description _ ->
             description
 
         Constant description _ ->
@@ -405,4 +415,3 @@ dropLowestRoll result =
                         |> (-) result.value
             in
             { result | value = newValue }
-
