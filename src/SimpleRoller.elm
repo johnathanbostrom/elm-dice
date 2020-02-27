@@ -63,21 +63,16 @@ update msg model =
 
 rollDice : Int -> Dice -> Cmd Msg
 rollDice num roller =
-    roll 1 D10 
-        |> explodeIf (\x -> x > 0) 
-        |> countSuccessesIf (\x -> True)
-        |> Random.list 1 
+    roll 1 roller
+        |> Random.list num
         |> Random.generate RollResult
-    -- roll 1 roller
-    --     |> Random.list num 
-    --     |> Random.generate RollResult
 
 
 statGen : Dice
 statGen =
     roll 4 D6
         |> dropLowest
-        |> CustomDie "4D6 Drop Lowest"
+        |> CompoundDie "4D6 Drop Lowest"
 
 
 plusRoll : Dice
@@ -85,35 +80,35 @@ plusRoll =
     roll 3 D6
         |> dropLowest
         |> plus (roll 2 D4)
-        |> CustomDie "3D6 Drop Lowest plus 2D4"
+        |> CompoundDie "3D6 Drop Lowest plus 2D4"
 
 
 succeedOnEightRoll : Dice
 succeedOnEightRoll =
     roll 1 explodingD10
-        |> CustomDie "Successes"
+        |> CompoundDie "Successes"
 
 
 explodingD10 : Dice
 explodingD10 =
-    roll 1 D10 
+    roll 1 D10
         |> explodeIf (\x -> x > 9)
         -- |> countSuccessesIf (\x -> x > 7)
-        |> CustomDie "exploding Dice"
+        |> CompoundDie "exploding Dice"
 
 
 aT : Dice
 aT =
     roll 3 D6
         |> andThen (\x -> Random.constant { x | value = -100 })
-        |> CustomDie "test"
+        |> CompoundDie "test"
 
 
 rerollDice : Dice
 rerollDice =
     roll 1 statGen
         |> rerollIf (\x -> x < 16) High
-        |> CustomDie "reroll < 3"
+        |> CompoundDie "reroll < 3"
 
 
 rResultToString : List RollResult -> String
@@ -138,15 +133,27 @@ dResultToString result =
         |> String.join " "
 
 
+customDie : Dice
+customDie =
+    CustomDie "custom" [ 2, 4, 6, 8, 0, 0, 0, 0 ]
+
+
+weightedDie : Dice
+weightedDie =
+    WeightedDie "weighted" [ ( 1, 1 ), ( 1, 2 ), ( 1, 3 ), ( 4, 4 ) ]
+
+
 
 -- VIEW
+
+
 view : Model -> Html Msg
 view model =
     div [] [ renderDice model ]
 
 
 renderDice : Model -> Html Msg
-renderDice model = 
+renderDice model =
     case model.rolls of
         [] ->
             div [] [ text "Click A Button To Roll Dice", diceButtons ]
@@ -170,18 +177,19 @@ diceButtons =
         , diceButton D12 "D12"
         , diceButton D20 "D20"
         , diceButton D100 "D100"
-        , diceButton (roll 3 D6 |> CustomDie "3D6") "3D6"
+        , diceButton (roll 3 D6 |> CompoundDie "3D6") "3D6"
         , diceButton statGen "statGen"
         , diceButton plusRoll "2"
         , diceButton succeedOnEightRoll "Exploding Dice Succeed on 8"
         , diceButton aT "Test"
+        , diceButton customDie "custom"
+        , diceButton weightedDie "weighted"
         ]
 
 
 diceButton : Dice -> String -> Html Msg
 diceButton dieType dieName =
     button [ onClick <| RollDice 6 dieType ] [ text dieName ]
-
 
 
 renderExpandedResults : List RollResult -> Html Msg

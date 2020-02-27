@@ -8,6 +8,67 @@ A Dice Roller Package based on [elm/random](https://package.elm-lang.org/package
         roll 4 D6
             |> dropLowest
 
+## Defining Dice
+Represents a Die or pool of dice. Most common dice are built in, but you can also create your own.
+
+    -- a six sided die
+    D6
+
+    --a 5 sided die
+    DX 5
+
+### CustomDie
+Represents a Die with the provided faces.
+
+    -- a die with even faces 2-8
+    evenDie =
+        CustomDie "evens" [ 2, 4, 6, 8 ]
+
+    -- a die with more twos
+    moreTwos =
+        CustomDie "evens" [ 2, 2, 2, 2, 2, 2, 2, 4, 6, 8 ]
+
+### WeightedDie
+Respresents a Die with weighted values.  
+
+    -- esentially the same as moreTwos above
+    moreTwos =
+        CustomDie "evens"
+            [ (70, 2)
+            , (10, 4)
+            , (10, 6)
+            , (10, 8)
+            ]
+
+    -- moreTwos could also be written as follows
+    moreTwos =
+        CustomDie "evens"
+            [ (7, 2)
+            , (1, 4)
+            , (1, 6)
+            , (1, 8)
+            ]
+
+
+### CompoundDie
+Typically represents a dice pool composed with 'roll' and other helper functions.
+
+    -- a dice pool of 4 six sided dice
+    statDice =
+        roll 4 D6
+            |> dropLowest  
+            |> CompoundDie "4D6"
+
+    -- this can now be used with roll
+    roll 2 statDice
+
+    -- you can also use any Random.Generator RollResult with CompoundDie
+    threeToTwelveDie =
+        Random.int 3 12
+            |> toRollResult "3to12"
+            |> CompoundDie "3to12"
+
+
 
 ## Example App
     type alias Model =
@@ -75,7 +136,7 @@ the dropLowest helper function computes the value of the Roll result without the
     explodingD10 =
         roll 1 D10
             |> andThen ExplodeIf ((==) 10)
-            |> CustomDie "Exploding D10"
+            |> Compound "Exploding D10"
 
     -- generator for rolling 3 exploding dice
         roll 3 explodingD10

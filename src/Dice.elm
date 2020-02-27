@@ -31,14 +31,25 @@ import Random
 {-| Represents a Die or pool of dice. Most common dice are built in, but you can create your own using DX, Custom, or Constant.
 
     -- A 5 sided die.
-    d5 = DX 5
+    d5 =
+        DX 5
 
     -- A custom die
     customDie =
-        CustomDie "EvenRoller" [2,2,2,2,4,4,4,6,6,8] 
+        CustomDie "EvenRoller" [ 2, 2, 2, 2, 4, 4, 4, 6, 6, 8 ]
+
+    -- A weighted die. Effectively the same as the customDie above.
+    weightedDie =
+        WeightedDie "EvenRoller"
+            [ ( 4, 2 )
+            , ( 3, 4 )
+            , ( 2, 6 )
+            , ( 1, 8 )
+            ]
 
     -- A Constant Value
-    always4 = Constant "Four" 4
+    always4 =
+        Constant "Four" 4
 
 -}
 type Dice
@@ -52,7 +63,7 @@ type Dice
     | DX Int
     | CompoundDie String (Random.Generator RollResult)
     | CustomDie String (List Int)
-    | WeightedDie String (List (Float, Int))
+    | WeightedDie String (List ( Float, Int ))
     | Constant String Int
 
 
@@ -160,7 +171,7 @@ dropLowest rolls =
 
 {-| Recalculates the value of a RollResult by counting the number of children that pass the test.
 
-        roll 3 D10 
+        roll 3 D10
             |> countSuccessesIf (\r -> r > 7)
 
 -}
@@ -177,6 +188,7 @@ countSuccessesIf test generator =
             |> andThen ExplodeIf ((==) 10)
 
 Currently, all dice are limited to 100 explosions.
+
 -}
 explodeIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
 explodeIf test generator =
@@ -291,21 +303,27 @@ toGenerator dieType =
         WeightedDie description sides ->
             dWeighted description sides
 
-dWeighted : String -> List (Float, Int) ->  Random.Generator RollResult
+
+dWeighted : String -> List ( Float, Int ) -> Random.Generator RollResult
 dWeighted description sides =
     case sides of
-       [] -> constant description 0
-       x :: xs ->
-        Random.weighted x xs
-        |> toRollResult description
+        [] ->
+            constant description 0
+
+        x :: xs ->
+            Random.weighted x xs
+                |> toRollResult description
+
 
 dCustom : String -> List Int -> Random.Generator RollResult
 dCustom description sides =
-    case sides of 
-        [] -> constant description 0
+    case sides of
+        [] ->
+            constant description 0
+
         x :: xs ->
             Random.uniform x xs
-            |> toRollResult description
+                |> toRollResult description
 
 
 dCompound : String -> Random.Generator RollResult -> Random.Generator RollResult
@@ -367,7 +385,7 @@ dieName dieType =
 
         Constant description _ ->
             description
-        
+
         CustomDie description _ ->
             description
 
@@ -422,10 +440,13 @@ explode : Random.Generator RollResult -> (Int -> Bool) -> RollResult -> Random.G
 explode generator test rollResult =
     explodeLimited generator test 1 rollResult
 
-maxRecursion = 100
+
+maxRecursion =
+    100
+
 
 explodeLimited : Random.Generator RollResult -> (Int -> Bool) -> Int -> RollResult -> Random.Generator (List RollResult)
-explodeLimited generator test recursionCount rollResult  =
+explodeLimited generator test recursionCount rollResult =
     if (recursionCount < maxRecursion) && test rollResult.value then
         Random.constant rollResult
             |> Random.list 1
@@ -433,7 +454,7 @@ explodeLimited generator test recursionCount rollResult  =
 
     else
         Random.constant rollResult
-            |> Random.list 1        
+            |> Random.list 1
 
 
 dropLowestRoll : RollResult -> RollResult
