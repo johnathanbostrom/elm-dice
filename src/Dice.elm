@@ -28,7 +28,7 @@ import Maybe
 import Random
 
 
-{-| Represents a Die or pool of dice. Most common dice are built in, but you can create your own using DX, Custom, or Constant.
+{-| Represents a Die or pool of dice. Most common dice are built in, but you can also create your own.
 
     -- A 5 sided die.
     d5 =

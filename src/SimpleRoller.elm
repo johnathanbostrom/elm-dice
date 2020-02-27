@@ -93,7 +93,7 @@ explodingD10 : Dice
 explodingD10 =
     roll 1 D10
         |> explodeIf (\x -> x > 9)
-        -- |> countSuccessesIf (\x -> x > 7)
+        |> countSuccessesIf (\x -> x > 7)
         |> CompoundDie "exploding Dice"
 
 
