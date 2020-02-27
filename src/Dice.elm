@@ -175,6 +175,7 @@ countSuccessesIf test generator =
         roll 1 D10
             |> andThen ExplodeIf ((==) 10)
 
+Currently, all dice are limited to 100 explosions.
 -}
 explodeIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
 explodeIf test generator =
@@ -390,14 +391,20 @@ chooseReroll keep rollResult =
 
 explode : Random.Generator RollResult -> (Int -> Bool) -> RollResult -> Random.Generator (List RollResult)
 explode generator test rollResult =
-    if test rollResult.value then
+    explodeLimited generator test 1 rollResult
+
+maxRecursion = 100
+
+explodeLimited : Random.Generator RollResult -> (Int -> Bool) -> Int -> RollResult -> Random.Generator (List RollResult)
+explodeLimited generator test recursionCount rollResult  =
+    if (recursionCount < maxRecursion) && test rollResult.value then
         Random.constant rollResult
             |> Random.list 1
-            |> Random.map2 (++) (generator |> Random.andThen (explode generator test))
+            |> Random.map2 (++) (generator |> Random.andThen (explodeLimited generator test (recursionCount + 1)))
 
     else
         Random.constant rollResult
-            |> Random.list 1
+            |> Random.list 1        
 
 
 dropLowestRoll : RollResult -> RollResult

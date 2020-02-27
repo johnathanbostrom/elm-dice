@@ -63,7 +63,11 @@ update msg model =
 
 rollDice : Int -> Dice -> Cmd Msg
 rollDice num roller =
-    roll 3 explodingD10 |> Random.list 1 |> Random.generate RollResult
+    roll 1 D10 
+        |> explodeIf (\x -> x > 0) 
+        |> countSuccessesIf (\x -> True)
+        |> Random.list 1 
+        |> Random.generate RollResult
     -- roll 1 roller
     --     |> Random.list num 
     --     |> Random.generate RollResult
