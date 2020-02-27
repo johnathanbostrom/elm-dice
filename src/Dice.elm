@@ -33,10 +33,9 @@ import Random
     -- A 5 sided die.
     d5 = DX 5
 
-    -- A custom die with values from 3 to 12.
-    Random.int 3 12
-    |> toRollResult
-    |> Custom "D3To12"
+    -- A custom die
+    customDie =
+        CustomDie "EvenRoller" [2,2,2,2,4,4,4,6,6,8] 
 
     -- A Constant Value
     always4 = Constant "Four" 4
@@ -51,7 +50,9 @@ type Dice
     | D20
     | D100
     | DX Int
-    | CustomDie String (Random.Generator RollResult)
+    | CompoundDie String (Random.Generator RollResult)
+    | CustomDie String (List Int)
+    | WeightedDie String (List (Float, Int))
     | Constant String Int
 
 
@@ -110,7 +111,7 @@ roll numDice dieType =
             |> Random.map (combineResults (String.fromInt numDice ++ " " ++ dieName dieType))
 
     else if numDice <= 0 then
-        constant 0
+        constant "No Dice" 0
 
     else
         toGenerator dieType
@@ -245,10 +246,10 @@ dX sides =
         |> Random.map (oneDieResult ("D" ++ String.fromInt sides))
 
 
-constant : Int -> Random.Generator RollResult
-constant val =
+constant : String -> Int -> Random.Generator RollResult
+constant description val =
     Random.constant val
-        |> Random.map (oneDieResult "Constant")
+        |> Random.map (oneDieResult description)
 
 
 toGenerator : Dice -> Random.Generator RollResult
@@ -278,15 +279,37 @@ toGenerator dieType =
         DX sides ->
             dX sides
 
-        CustomDie description generator ->
-            dCustom description generator
+        CompoundDie description generator ->
+            dCompound description generator
 
-        Constant _ val ->
-            constant val
+        Constant description val ->
+            constant description val
+
+        CustomDie description sides ->
+            dCustom description sides
+
+        WeightedDie description sides ->
+            dWeighted description sides
+
+dWeighted : String -> List (Float, Int) ->  Random.Generator RollResult
+dWeighted description sides =
+    case sides of
+       [] -> constant description 0
+       x :: xs ->
+        Random.weighted x xs
+        |> toRollResult description
+
+dCustom : String -> List Int -> Random.Generator RollResult
+dCustom description sides =
+    case sides of 
+        [] -> constant description 0
+        x :: xs ->
+            Random.uniform x xs
+            |> toRollResult description
 
 
-dCustom : String -> Random.Generator RollResult -> Random.Generator RollResult
-dCustom desc generator =
+dCompound : String -> Random.Generator RollResult -> Random.Generator RollResult
+dCompound desc generator =
     Random.map (\r -> { r | description = desc }) generator
 
 
@@ -339,10 +362,16 @@ dieName dieType =
         DX sides ->
             "D" ++ String.fromInt sides
 
-        CustomDie description _ ->
+        CompoundDie description _ ->
             description
 
         Constant description _ ->
+            description
+        
+        CustomDie description _ ->
+            description
+
+        WeightedDie description _ ->
             description
 
 
