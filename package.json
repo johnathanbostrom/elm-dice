@@ -1,8 +1,8 @@
 {
-    "author": "Tyler Lentz",
-    "name": "elm-simple",
+    "author": "Johnathan Bostrom",
+    "name": "elm-dice",
     "version": "1.0.0",
-    "description": "Starter elm project",
+    "description": "A Dice Roller Package based on elm/random that allows you to build customizable dice rolling functions in a readable way.",
     "main": "index.js",
     "scripts": {
         "test": "elm-test",
@@ -15,7 +15,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/tlentz/elm-simple.git"
+        "url": "git+https://github.com/johnathanbostrom/elm-dice.git"
     },
     "license": "MIT",
     "devDependencies": {
