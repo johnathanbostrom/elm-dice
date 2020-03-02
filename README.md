@@ -69,7 +69,7 @@ Typically represents a dice pool composed with 'roll' and other helper functions
     -- you can also use any Random.Generator RollResult with DicePool
     threeToTwelveDie =
         Random.int 3 12
-            |> toRollResult "3to12"
+            |> toRollResultGenerator "3to12"
             |> DicePool "3to12"
 
 ## Example App
@@ -114,16 +114,15 @@ Typically represents a dice pool composed with 'roll' and other helper functions
     , children = Empty
     }
 
-
 ### dropLowest
 
 the dropLowest helper function computes the value of the Roll result without the lowest value of the child rolls.
-  
- --generator
+
+--generator
 roll 4 D6
-|> dropLowest  
-  
- -- one possible output
+|> dropLowest
+
+-- one possible output
 { description = "4D6"
 , value = 12
 , children =
@@ -142,8 +141,8 @@ RollResults
     -- define a ten sided die that "explodes" on a 10.
     explodingD10 =
         roll 1 D10
-            |> andThen ExplodeIf ((==) 10)
-            |> Compound "Exploding D10"
+            |> ExplodeIf (\r -> r == 10)
+            |> DicePool "Exploding D10"
 
     -- generator for rolling 3 exploding dice
         roll 3 explodingD10
@@ -182,7 +181,7 @@ Count the number of dice that satisfy the predicate.
 
     -- generator
     roll 4 D10
-        |> countSuccessesIf (\r -> r > 7)
+        |> countSuccessesIf (\r -> r.value > 7)
 
     -- one possible output
 

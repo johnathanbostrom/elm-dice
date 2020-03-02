@@ -1,7 +1,7 @@
 module Dice exposing
     ( roll, Dice(..), RollResult, ChildrenRolls(..)
     , dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep(..), plus
-    , toRollResult
+    , toRollResultGenerator
     )
 
 {-| A Dice Roller Package based on elm/random that allows you to build customizable dice rolling functions in a readable way.
@@ -19,7 +19,7 @@ module Dice exposing
 
 # Common Helpers
 
-@docs toRollResult
+@docs toRollResultGenerator
 
 -}
 
@@ -312,7 +312,7 @@ dWeighted description sides =
 
         x :: xs ->
             Random.weighted x xs
-                |> toRollResult description
+                |> toRollResultGenerator description
 
 
 dCustom : String -> List Int -> Random.Generator RollResult
@@ -323,7 +323,7 @@ dCustom description sides =
 
         x :: xs ->
             Random.uniform x xs
-                |> toRollResult description
+                |> toRollResultGenerator description
 
 
 dCompound : String -> Random.Generator RollResult -> Random.Generator RollResult
