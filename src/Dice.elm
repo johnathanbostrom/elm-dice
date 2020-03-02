@@ -1,6 +1,6 @@
 module Dice exposing
     ( roll, Dice(..), RollResult, ChildrenRolls(..)
-    , dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep(..), plus
+    , dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep(..), plus, mapValue
     , toRollResultGenerator
     )
 
@@ -14,7 +14,7 @@ module Dice exposing
 
 # Combining and Transforming Rolls
 
-@docs dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep, plus
+@docs dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep, plus, mapValue
 
 
 # Common Helpers
@@ -211,6 +211,28 @@ rerollIf test keep generator =
         |> Random.andThen (reroll generator test)
         |> Random.map (combineResults "Reroll")
         |> Random.map (chooseReroll keep)
+
+
+{-| Recomputes the value of a RollResult given the rule provided.
+
+    --rules for computing RollResult value
+    multiplyRolls rollResult =
+        case rollResult.children of
+            Empty ->
+                0
+            RollResults rolls ->
+                gatherEqualsBy .value rolls
+                    |> map (\x -> x.left.value * (List.length x.right + 1))
+                    |> sum
+
+    -- rolls 4 D6, multiplying each result by the number of times it was rolled.
+    roll 4 D6
+        |> mapValue multiplyRolls
+
+-}
+mapValue : (RollResult -> Int) -> Random.Generator RollResult -> Random.Generator RollResult
+mapValue computeValue generator =
+    Random.map (\r -> { r | value = computeValue r }) generator
 
 
 {-| Converts a Random.Generator Int into a Random.Generator RollResult.
