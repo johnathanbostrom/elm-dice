@@ -109,7 +109,7 @@ type alias RollResult =
     }
 
 
-{-| make a Random.Generator for a roll of n dice.
+{-| make a Random.Generator for a roll of n dice. if n < 1, this will return `Constant "No Dice" 0`
 
     roll 3 D6
 
@@ -185,7 +185,7 @@ countSuccessesIf test generator =
     --defines a ten sided die that "explodes" on a 10.
     explodingDie =
         roll 1 D10
-            |> andThen ExplodeIf ((==) 10)
+            |> ExplodeIf (\r -> r == 10)
 
 Currently, all dice are limited to 100 explosions.
 
@@ -202,7 +202,7 @@ The value of one roll will be kept using the Keep rules specified.
 
     -- rerolls any ones or twos, keeping the new result even if lower.
         roll 2 D6
-        |> andThen RerollIf (\r -> r.value < 2) New
+        |> RerollIf (\r -> r.value < 2) New
 
 -}
 rerollIf : (RollResult -> Bool) -> Keep -> Random.Generator RollResult -> Random.Generator RollResult
@@ -215,8 +215,8 @@ rerollIf test keep generator =
 
 {-| Converts a Random.Generator Int into a Random.Generator RollResult.
 -}
-toRollResult : String -> Random.Generator Int -> Random.Generator RollResult
-toRollResult description generator =
+toRollResultGenerator : String -> Random.Generator Int -> Random.Generator RollResult
+toRollResultGenerator description generator =
     Random.map (oneDieResult description) generator
 
 
