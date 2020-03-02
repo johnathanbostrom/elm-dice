@@ -61,7 +61,7 @@ type Dice
     | D20
     | D100
     | DX Int
-    | CompoundDie String (Random.Generator RollResult)
+    | DicePool String (Random.Generator RollResult)
     | CustomDie String (List Int)
     | WeightedDie String (List ( Float, Int ))
     | Constant String Int
@@ -291,7 +291,7 @@ toGenerator dieType =
         DX sides ->
             dX sides
 
-        CompoundDie description generator ->
+        DicePool description generator ->
             dCompound description generator
 
         Constant description val ->
@@ -380,7 +380,7 @@ dieName dieType =
         DX sides ->
             "D" ++ String.fromInt sides
 
-        CompoundDie description _ ->
+        DicePool description _ ->
             description
 
         Constant description _ ->
