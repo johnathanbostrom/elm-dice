@@ -328,6 +328,15 @@ plusTests =
         ]
 
 
+mapValueTests : Test
+mapValueTests =
+    describe "mapValue Tests"
+        [ fuzz (rollFuzz (roll 4 D6 |> mapValue multiplyRolls)) "rolls 4 D6, multiplying each result by the number of times it was rolled." <|
+            \roll ->
+                Expect.equal roll.value (multiplyRolls roll)
+        ]
+
+
 internalTests : Test
 internalTests =
     describe "test helpers"
@@ -347,7 +356,26 @@ internalTests =
             \_ ->
                 hasValidExplodedResults (\x -> x.value == 4) sampleInvertedExplosions
                     |> Expect.false "Expected false for invalid list"
+        , test "multuplyRolls" <|
+            \_ ->
+                multiplyRolls sample4D6
+                    |> Expect.equal 56
         ]
+
+
+multiplyRolls : RollResult -> Int
+multiplyRolls rollResult =
+    case rollResult.children of
+        Empty ->
+            0
+
+        RollResults rolls ->
+            let
+                timesRolled r =
+                    List.Extra.count (\roll -> roll.value == r) rolls
+            in
+            List.map (\roll -> timesRolled roll.value * roll.value) rolls
+                |> List.sum
 
 
 valueOfChildren : RollResult -> Int
@@ -360,10 +388,6 @@ valueOfChildren roll =
 rollFuzz : Random.Generator RollResult -> Fuzzer RollResult
 rollFuzz generator =
     custom generator Shrink.noShrink
-
-
-
---TODO: better shrink
 
 
 allTwos : Dice
@@ -379,8 +403,8 @@ allTwosWeighted =
 explodingD10 : Dice
 explodingD10 =
     roll 1 D10
-        |> explodeIf ((==) 10)
-        |> CompoundDie "exploding D10"
+        |> explodeIf (\r -> r.value == 10)
+        |> DicePool "exploding D10"
 
 
 getGrandChildren : RollResult -> List (List RollResult)
@@ -402,8 +426,8 @@ getChildren rollResult =
 fiftyExplodingD4s : Random.Generator RollResult
 fiftyExplodingD4s =
     roll 1 D4
-        |> explodeIf ((==) 4)
-        |> CompoundDie "exploding D4"
+        |> explodeIf (\r -> r.value == 4)
+        |> DicePool "exploding D4"
         |> roll 50
 
 
@@ -445,3 +469,18 @@ sampleInvertedExplosions =
     , RollResult "" 4 Empty
     , RollResult "" 2 Empty
     ]
+
+
+sample4D6 : RollResult
+sample4D6 =
+    RollResult "4 D6" 20 sample4D6Children
+
+
+sample4D6Children : ChildrenRolls
+sample4D6Children =
+    RollResults
+        [ RollResult "" 6 Empty
+        , RollResult "" 6 Empty
+        , RollResult "" 6 Empty
+        , RollResult "" 2 Empty
+        ]

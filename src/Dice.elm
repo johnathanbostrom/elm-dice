@@ -1,7 +1,7 @@
 module Dice exposing
     ( roll, Dice(..), RollResult, ChildrenRolls(..)
-    , dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep(..), plus
-    , toRollResult
+    , dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep(..), plus, mapValue
+    , toRollResultGenerator
     )
 
 {-| A Dice Roller Package based on elm/random that allows you to build customizable dice rolling functions in a readable way.
@@ -14,12 +14,12 @@ module Dice exposing
 
 # Combining and Transforming Rolls
 
-@docs dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep, plus
+@docs dropLowest, countSuccessesIf, explodeIf, rerollIf, andThen, Keep, plus, mapValue
 
 
 # Common Helpers
 
-@docs toRollResult
+@docs toRollResultGenerator
 
 -}
 
@@ -61,7 +61,7 @@ type Dice
     | D20
     | D100
     | DX Int
-    | CompoundDie String (Random.Generator RollResult)
+    | DicePool String (Random.Generator RollResult)
     | CustomDie String (List Int)
     | WeightedDie String (List ( Float, Int ))
     | Constant String Int
@@ -109,7 +109,7 @@ type alias RollResult =
     }
 
 
-{-| make a Random.Generator for a roll of n dice.
+{-| make a Random.Generator for a roll of n dice. if n < 1, this will return `Constant "No Dice" 0`
 
     roll 3 D6
 
@@ -175,7 +175,7 @@ dropLowest rolls =
             |> countSuccessesIf (\r -> r > 7)
 
 -}
-countSuccessesIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
+countSuccessesIf : (RollResult -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
 countSuccessesIf test generator =
     Random.map (successes test) generator
 
@@ -185,12 +185,12 @@ countSuccessesIf test generator =
     --defines a ten sided die that "explodes" on a 10.
     explodingDie =
         roll 1 D10
-            |> andThen ExplodeIf ((==) 10)
+            |> ExplodeIf (\r -> r == 10)
 
 Currently, all dice are limited to 100 explosions.
 
 -}
-explodeIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
+explodeIf : (RollResult -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
 explodeIf test generator =
     generator
         |> Random.andThen (explode generator test)
@@ -202,10 +202,10 @@ The value of one roll will be kept using the Keep rules specified.
 
     -- rerolls any ones or twos, keeping the new result even if lower.
         roll 2 D6
-        |> andThen RerollIf (\r -> r < 2) New
+        |> RerollIf (\r -> r.value < 2) New
 
 -}
-rerollIf : (Int -> Bool) -> Keep -> Random.Generator RollResult -> Random.Generator RollResult
+rerollIf : (RollResult -> Bool) -> Keep -> Random.Generator RollResult -> Random.Generator RollResult
 rerollIf test keep generator =
     generator
         |> Random.andThen (reroll generator test)
@@ -213,10 +213,32 @@ rerollIf test keep generator =
         |> Random.map (chooseReroll keep)
 
 
+{-| Recomputes the value of a RollResult given the rule provided.
+
+    --rules for computing RollResult value
+    multiplyRolls rollResult =
+        case rollResult.children of
+            Empty ->
+                0
+            RollResults rolls ->
+                gatherEqualsBy .value rolls
+                    |> map (\x -> x.left.value * (List.length x.right + 1))
+                    |> sum
+
+    -- rolls 4 D6, multiplying each result by the number of times it was rolled.
+    roll 4 D6
+        |> mapValue multiplyRolls
+
+-}
+mapValue : (RollResult -> Int) -> Random.Generator RollResult -> Random.Generator RollResult
+mapValue computeValue generator =
+    Random.map (\r -> { r | value = computeValue r }) generator
+
+
 {-| Converts a Random.Generator Int into a Random.Generator RollResult.
 -}
-toRollResult : String -> Random.Generator Int -> Random.Generator RollResult
-toRollResult description generator =
+toRollResultGenerator : String -> Random.Generator Int -> Random.Generator RollResult
+toRollResultGenerator description generator =
     Random.map (oneDieResult description) generator
 
 
@@ -224,20 +246,20 @@ toRollResult description generator =
 -- Local Functions
 
 
-successes : (Int -> Bool) -> RollResult -> RollResult
+successes : (RollResult -> Bool) -> RollResult -> RollResult
 successes test rollResult =
     let
         num =
             case rollResult.children of
                 Empty ->
-                    if test rollResult.value then
+                    if test rollResult then
                         1
 
                     else
                         0
 
                 RollResults rolls ->
-                    count (\r -> test r.value) rolls
+                    count test rolls
     in
     { rollResult | value = num }
 
@@ -291,7 +313,7 @@ toGenerator dieType =
         DX sides ->
             dX sides
 
-        CompoundDie description generator ->
+        DicePool description generator ->
             dCompound description generator
 
         Constant description val ->
@@ -312,7 +334,7 @@ dWeighted description sides =
 
         x :: xs ->
             Random.weighted x xs
-                |> toRollResult description
+                |> toRollResultGenerator description
 
 
 dCustom : String -> List Int -> Random.Generator RollResult
@@ -323,7 +345,7 @@ dCustom description sides =
 
         x :: xs ->
             Random.uniform x xs
-                |> toRollResult description
+                |> toRollResultGenerator description
 
 
 dCompound : String -> Random.Generator RollResult -> Random.Generator RollResult
@@ -380,7 +402,7 @@ dieName dieType =
         DX sides ->
             "D" ++ String.fromInt sides
 
-        CompoundDie description _ ->
+        DicePool description _ ->
             description
 
         Constant description _ ->
@@ -393,9 +415,9 @@ dieName dieType =
             description
 
 
-reroll : Random.Generator RollResult -> (Int -> Bool) -> RollResult -> Random.Generator (List RollResult)
+reroll : Random.Generator RollResult -> (RollResult -> Bool) -> RollResult -> Random.Generator (List RollResult)
 reroll generator test rollResult =
-    if test rollResult.value then
+    if test rollResult then
         Random.constant rollResult
             |> Random.list 1
             |> Random.map2 (::) generator
@@ -436,7 +458,7 @@ chooseReroll keep rollResult =
             { rollResult | value = keptRoll }
 
 
-explode : Random.Generator RollResult -> (Int -> Bool) -> RollResult -> Random.Generator (List RollResult)
+explode : Random.Generator RollResult -> (RollResult -> Bool) -> RollResult -> Random.Generator (List RollResult)
 explode generator test rollResult =
     explodeLimited generator test 1 rollResult
 
@@ -445,9 +467,9 @@ maxRecursion =
     100
 
 
-explodeLimited : Random.Generator RollResult -> (Int -> Bool) -> Int -> RollResult -> Random.Generator (List RollResult)
+explodeLimited : Random.Generator RollResult -> (RollResult -> Bool) -> Int -> RollResult -> Random.Generator (List RollResult)
 explodeLimited generator test recursionCount rollResult =
-    if (recursionCount < maxRecursion) && test rollResult.value then
+    if (recursionCount < maxRecursion) && test rollResult then
         Random.constant rollResult
             |> Random.list 1
             |> Random.map2 (++) (generator |> Random.andThen (explodeLimited generator test (recursionCount + 1)))
