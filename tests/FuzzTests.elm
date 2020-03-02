@@ -379,7 +379,7 @@ allTwosWeighted =
 explodingD10 : Dice
 explodingD10 =
     roll 1 D10
-        |> explodeIf ((==) 10)
+        |> explodeIf (\r -> r.value == 10)
         |> CompoundDie "exploding D10"
 
 
@@ -402,7 +402,7 @@ getChildren rollResult =
 fiftyExplodingD4s : Random.Generator RollResult
 fiftyExplodingD4s =
     roll 1 D4
-        |> explodeIf ((==) 4)
+        |> explodeIf (\r -> r.value == 4)
         |> CompoundDie "exploding D4"
         |> roll 50
 

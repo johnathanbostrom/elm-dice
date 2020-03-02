@@ -175,7 +175,7 @@ dropLowest rolls =
             |> countSuccessesIf (\r -> r > 7)
 
 -}
-countSuccessesIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
+countSuccessesIf : (RollResult -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
 countSuccessesIf test generator =
     Random.map (successes test) generator
 
@@ -190,7 +190,7 @@ countSuccessesIf test generator =
 Currently, all dice are limited to 100 explosions.
 
 -}
-explodeIf : (Int -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
+explodeIf : (RollResult -> Bool) -> Random.Generator RollResult -> Random.Generator RollResult
 explodeIf test generator =
     generator
         |> Random.andThen (explode generator test)
@@ -202,10 +202,10 @@ The value of one roll will be kept using the Keep rules specified.
 
     -- rerolls any ones or twos, keeping the new result even if lower.
         roll 2 D6
-        |> andThen RerollIf (\r -> r < 2) New
+        |> andThen RerollIf (\r -> r.value < 2) New
 
 -}
-rerollIf : (Int -> Bool) -> Keep -> Random.Generator RollResult -> Random.Generator RollResult
+rerollIf : (RollResult -> Bool) -> Keep -> Random.Generator RollResult -> Random.Generator RollResult
 rerollIf test keep generator =
     generator
         |> Random.andThen (reroll generator test)
@@ -224,20 +224,20 @@ toRollResult description generator =
 -- Local Functions
 
 
-successes : (Int -> Bool) -> RollResult -> RollResult
+successes : (RollResult -> Bool) -> RollResult -> RollResult
 successes test rollResult =
     let
         num =
             case rollResult.children of
                 Empty ->
-                    if test rollResult.value then
+                    if test rollResult then
                         1
 
                     else
                         0
 
                 RollResults rolls ->
-                    count (\r -> test r.value) rolls
+                    count test rolls
     in
     { rollResult | value = num }
 
@@ -393,9 +393,9 @@ dieName dieType =
             description
 
 
-reroll : Random.Generator RollResult -> (Int -> Bool) -> RollResult -> Random.Generator (List RollResult)
+reroll : Random.Generator RollResult -> (RollResult -> Bool) -> RollResult -> Random.Generator (List RollResult)
 reroll generator test rollResult =
-    if test rollResult.value then
+    if test rollResult then
         Random.constant rollResult
             |> Random.list 1
             |> Random.map2 (::) generator
@@ -436,7 +436,7 @@ chooseReroll keep rollResult =
             { rollResult | value = keptRoll }
 
 
-explode : Random.Generator RollResult -> (Int -> Bool) -> RollResult -> Random.Generator (List RollResult)
+explode : Random.Generator RollResult -> (RollResult -> Bool) -> RollResult -> Random.Generator (List RollResult)
 explode generator test rollResult =
     explodeLimited generator test 1 rollResult
 
@@ -445,9 +445,9 @@ maxRecursion =
     100
 
 
-explodeLimited : Random.Generator RollResult -> (Int -> Bool) -> Int -> RollResult -> Random.Generator (List RollResult)
+explodeLimited : Random.Generator RollResult -> (RollResult -> Bool) -> Int -> RollResult -> Random.Generator (List RollResult)
 explodeLimited generator test recursionCount rollResult =
-    if (recursionCount < maxRecursion) && test rollResult.value then
+    if (recursionCount < maxRecursion) && test rollResult then
         Random.constant rollResult
             |> Random.list 1
             |> Random.map2 (++) (generator |> Random.andThen (explodeLimited generator test (recursionCount + 1)))
