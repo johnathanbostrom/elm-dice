@@ -12,10 +12,6 @@ internalTests =
             \_ ->
                 farkleScore [6,2,3,4,1,5]
                     |> Expect.equal 1000
-        , test "farkle score three pair [1,3,2,3,1,2]" <|
-            \_ ->
-                farkleScore [1,3,2,3,1,2]
-                    |> Expect.equal 500
         , test "farkle score nothing [2,3,2,3,4,6]" <|
             \_ ->
                 farkleScore [2,3,2,3,4,6]
@@ -36,5 +32,23 @@ internalTests =
             \_ ->
                 farkleScore [1,5,1,5,1,5]
                     |> Expect.equal 1500
+        , describe "three pair"
+            [ test "farkle score three pair [1,3,2,3,1,2]" <|
+                \_ ->
+                    farkleScore [1,3,2,3,1,2]
+                        |> Expect.equal 500
+            , test "farkle score one pair is not three pair [3,3]" <|
+                \_ ->
+                    farkleScore [3,3]
+                        |> Expect.equal 0
+            , test "farkle score two pair is not three pair [3,3]" <|
+                \_ ->
+                    farkleScore [3,3,4,4]
+                        |> Expect.equal 0
+            , test "farkle score three is not three pair [3,3]" <|
+                \_ ->
+                    farkleScore [3,3,3]
+                        |> Expect.equal 300
+            ]
         ]
     
