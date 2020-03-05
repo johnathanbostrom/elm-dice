@@ -220,16 +220,15 @@ currentDiceContainer : Model -> Html Msg
 currentDiceContainer model =
     let
         attrs = 
-            [ class "currentDiceContainer"
-            , style "padding-left" "calc(100vw/3)"
-            , style "padding-right" "calc(100vw/3)"
-            ] 
+            [ class "currentDiceContainer"] ++ currentDiceContainerStyles
+        rolls =
+            case model.playerRolls of
+                Nothing ->
+                    []
+                Just r ->
+                    r           
     in
-        case model.playerRolls of
-            Nothing ->
-                div attrs []
-            Just rolls ->
-              div attrs [ dicePicker rolls, diceScorer rolls ]
+        div attrs ([diceScorer rolls ] ++ diePickers rolls)
               
 
 
@@ -238,9 +237,17 @@ diceScorer rolls =
     span [] [text <| String.fromInt <| selectedScore rolls]
 
 
-dicePicker : List PlayerRollDie ->  Html Msg
-dicePicker rolls =
-    span [] <| List.indexedMap diePicker rolls
+diePickers : List PlayerRollDie ->  List (Html Msg)
+diePickers rolls =
+    let
+        emptyContainers = List.repeat (6 - List.length rolls) emptyDiePicker
+    in
+        List.map diePickerWrapper <| (List.indexedMap diePicker rolls) ++ emptyContainers
+
+diePickerWrapper : Html Msg -> Html Msg
+diePickerWrapper dPicker =
+    div ([ class "diePickerWrapper" ] ++ diePickerWrapperStyles)
+         [dPicker]
 
 diePicker : Int -> PlayerRollDie -> Html Msg
 diePicker index die =
@@ -250,12 +257,15 @@ diePicker index die =
                 "lightgoldenrodyellow"
             else
                 "lightgrey"
+        attrs = [ style "background-color" background 
+                , onClick <| PickDieToKeep index
+                ] ++ diePickerStyles
     in
-    span [ style "padding" "3px"
-         , style "background-color" background 
-         , onClick <| PickDieToKeep index
-         ]
-         [ text <| String.fromInt die.value ]
+        span attrs [ text <| String.fromInt die.value ]
+
+emptyDiePicker : Html Msg
+emptyDiePicker =
+    span ([style "background-color" "lightgrey"] ++ diePickerStyles) []
 
 viewComputerRolls : Model -> Html Msg
 viewComputerRolls model =
@@ -281,3 +291,25 @@ renderRoll roll =
                     div [ style "margin-left" "2em" ] (List.map renderRoll rolls)
             in
             div [] [ text <| valueString, children ]
+
+
+currentDiceContainerStyles : List (Html.Attribute Msg)
+currentDiceContainerStyles =
+    [ style "text-align" "center"
+    , style "padding-left" "calc(100vw/3)"
+    , style "padding-right" "calc(100vw/3)"
+    ]
+
+
+diePickerStyles : List (Html.Attribute Msg)
+diePickerStyles =
+    [ style "display" "inline-block"
+    , style "width" "40px"
+    , style "height" "40px"
+    ]
+
+diePickerWrapperStyles : List (Html.Attribute Msg)
+diePickerWrapperStyles =
+    [ style "width" "15%"
+    , style "display" "inline-block"
+    ]
