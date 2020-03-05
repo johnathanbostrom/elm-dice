@@ -155,24 +155,51 @@ selectedScore : List PlayerRollDie -> Int
 selectedScore selectedRolls =
     farkleScore <| List.map .value <| List.filter .selected selectedRolls
 
+        
+
 view : Model -> Html Msg
-view model = 
-    div []
-        [ div [class "header"][]
-        , div [ class "playersContainer"
-              , style "padding-left" "calc(100vw/3)"
-              , style "padding-right" "calc(100vw/3)"
-              ] 
-              [ playerView model.playerA
-              , playerSpacer
-              , playerView model.playerB
-              ]
+view model =
+    div [ style "display" "grid"
+        , style "grid-template-columns" "auto 60px auto 60px auto"
+        , style "grid-template-rows" "150px 50px 10px 50px auto 10px"
+        , style "height" "100vh"
+        , style "grid-template-areas" templateAreas
+        ]
+        [ playersContainer model
+        , selectedDiceContainer model
         , currentDiceContainer model
-        , div [class "buttonContainer"
-              , style "padding-left" "calc(100vw/3)"
-              , style "padding-right" "calc(100vw/3)"
-              ]  <| buttons model
-        , viewComputerRolls model
+        , buttonContainer model
+        ]
+
+
+templateAreas : String 
+templateAreas =
+    String.join " "    
+        [ "\". p p p .\"" 
+        , "\". o d t .\""
+        , "\". o . t .\""
+        , "\". o b t .\""    
+        , "\". o . t .\""
+        , "\". o . t .\""
+        ]
+
+
+buttonContainer : Model -> Html Msg
+buttonContainer model =
+    div [ class "buttonContainer"
+        , style "grid-area" "b" 
+        , style "justify-self" "center" 
+        ]  <| buttons model
+
+
+playersContainer : Model -> Html Msg
+playersContainer model =
+    div [ class "playersContainer"
+        , style "grid-area" "p"       
+        ] 
+        [ playerView model.playerA
+        , playerSpacer
+        , playerView model.playerB
         ]
 
 
@@ -216,6 +243,15 @@ btn name click =
     button [ onClick click ][ text name ] 
 
 
+selectedDiceContainer : Model ->  Html Msg
+selectedDiceContainer model =
+    div [ style "height" "100%"
+        , style "width" "100%"
+        , style "background-color" "lightgray"
+        , style "grid-area" "o"
+        ]
+        []
+
 currentDiceContainer : Model -> Html Msg
 currentDiceContainer model =
     let
@@ -228,7 +264,7 @@ currentDiceContainer model =
                 Just r ->
                     r           
     in
-        div attrs ([diceScorer rolls ] ++ diePickers rolls)
+        div attrs <| diePickers rolls
               
 
 
@@ -242,7 +278,7 @@ diePickers rolls =
     let
         emptyContainers = List.repeat (6 - List.length rolls) emptyDiePicker
     in
-        List.map diePickerWrapper <| (List.indexedMap diePicker rolls) ++ emptyContainers
+        (List.indexedMap diePicker rolls) ++ emptyContainers
 
 diePickerWrapper : Html Msg -> Html Msg
 diePickerWrapper dPicker =
@@ -295,9 +331,12 @@ renderRoll roll =
 
 currentDiceContainerStyles : List (Html.Attribute Msg)
 currentDiceContainerStyles =
-    [ style "text-align" "center"
-    , style "padding-left" "calc(100vw/3)"
-    , style "padding-right" "calc(100vw/3)"
+    [ style "grid-area" "d"
+    , style "display" "grid"
+    , style "grid-auto-colums" "40px"
+    , style "grid-auto-flow" "column"
+    , style "justify-self" "center"
+    , style "grid-column-gap" "20px"
     ]
 
 
