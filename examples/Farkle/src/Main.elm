@@ -11,10 +11,10 @@ import List.Extra exposing (getAt, updateAt)
 
 type alias Model =
     { computerRolls : Maybe RollResult
-    , playerRolls : Maybe (List PlayerRollDie)
-    , playerA : Player
-    , playerB : Player
+    , currentRolls : Maybe (List PlayerRollDie)
+    , currentPlayers : Players
     , farkled : Bool
+    , turnScore : Int
     }
 
 main : Program () Model Msg
@@ -34,10 +34,10 @@ subscriptions _ =
 initModel : Model
 initModel =
     { computerRolls = Nothing
-    , playerRolls = Nothing
-    , playerA = initPlayer "Player"
-    , playerB = initPlayer "Computer"
+    , currentRolls = Nothing
+    , currentPlayers = Players (initPlayer "Player" Human) (initPlayer "Computer" Computer) FirstPlayer
     , farkled = False
+    , turnScore = 0
     }
 
 
@@ -48,60 +48,40 @@ init _ =
             initModel
     in
     ( initModel
-    , Cmd.batch [computerTurn]
+    , Cmd.batch [playerRoll 6]
     )
 
 
 
 type Msg
-    = ComputerRoll
-    | GotComputerRoll RollResult
-    | PlayerRoll Int Int
+    = GotComputerRoll RollResult
     | GotPlayerRoll RollResult
     | PlayerStop Int
     | PickDieToKeep Int
+    | RollDice
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        ComputerRoll -> 
-            (model, computerTurn)
         GotComputerRoll roll ->
-            let
-                oldPlayer = model.playerB
-                updatedPlayer = 
-                    {oldPlayer | turnScore = 0, totalScore = oldPlayer.totalScore + oldPlayer.turnScore + roll.value}
-            in
-            ({model | computerRolls = Just roll, playerB = updatedPlayer}, Cmd.none)
-        PlayerRoll score numDice->
-            let
-                oldPlayer = model.playerA
-                updatedPlayer = 
-                    {oldPlayer | turnScore = oldPlayer.turnScore + score}
-            in
-                ({model | playerA = updatedPlayer}, playerRoll numDice)
+            endTurn {model | turnScore = roll.value}
         GotPlayerRoll roll ->
             let
-                oldPlayer = model.playerA
-                (updatedPlayer, rollFarkled) =   
-                    if farkled roll then
-                        ({oldPlayer | turnScore = 0 }, True)
+                rollFarkled = farkled roll
+                updatedTurnScore =
+                    if rollFarkled then
+                        0
                     else
-                        (oldPlayer, False)
+                        model.turnScore
             in
-                ({model | playerRolls = Just (rollResultToPlayerRollDie roll), playerA = updatedPlayer, farkled = rollFarkled}, Cmd.none)
+                ({model | currentRolls = Just (rollResultToPlayerRollDie roll), turnScore = updatedTurnScore, farkled = rollFarkled}, Cmd.none)
         PlayerStop score ->
-            let
-                oldPlayer = model.playerA
-                updatedPlayer = 
-                    {oldPlayer | turnScore = 0, totalScore = oldPlayer.totalScore + oldPlayer.turnScore + score}
-            in
-                ({model | playerA = updatedPlayer, playerRolls = Nothing }, computerTurn)
+            endTurn {model | turnScore = model.turnScore + score}
         PickDieToKeep index ->
             let
                 updatedDice = 
-                    case model.playerRolls of
+                    case model.currentRolls of
                         Just rolls ->
                             rolls
                                 |> updateAt index 
@@ -115,7 +95,39 @@ update msg model =
                         Nothing ->
                             Nothing
             in
-                ({model | playerRolls = updatedDice}, Cmd.none)
+                ({model | currentRolls = updatedDice}, Cmd.none)
+        RollDice ->
+            case (currentPlayer model.currentPlayers).playerType of
+                Human ->
+                    case model.currentRolls of
+                        Just rolls ->                        
+                            let
+                                selectedRolls = List.filter .selected rolls
+                                numDice = (List.length rolls) - (List.length selectedRolls)
+                                score = farkleScore <| List.map .value selectedRolls
+                            in
+                                ({model | turnScore = model.turnScore + score}, playerRoll numDice)
+                        Nothing ->
+                            (model, playerRoll 6)
+                Computer ->
+                    (model, computerTurn)
+
+
+endTurn : Model -> (Model, Cmd Msg)
+endTurn model =
+    let
+        updatedPlayers =
+            updateCurrentPlayer (\p -> {p | totalScore = p.totalScore + model.turnScore}) model.currentPlayers
+            |> nextTurn
+        cmd =
+            case (currentPlayer updatedPlayers).playerType of
+                Human ->
+                    playerRoll 6
+                Computer ->
+                    computerTurn
+    in
+        ({model | currentPlayers = updatedPlayers, turnScore = 0}, cmd)
+
 
 
 computerTurn : Cmd Msg
@@ -142,32 +154,79 @@ type alias PlayerRollDie =
     }
 
 type alias Player =
-    { turnScore : Int
-    , totalScore : Int
+    { totalScore : Int
     , name : String
+    , playerType : PlayerType
     }
 
-initPlayer : String -> Player
-initPlayer name = 
-    Player 0 0 name
+type Players = Players Player Player CurrentPlayer
 
-selectedScore : List PlayerRollDie -> Int
-selectedScore selectedRolls =
-    farkleScore <| List.map .value <| List.filter .selected selectedRolls
+type CurrentPlayer = FirstPlayer
+    | SecondPlayer
 
+type PlayerType = Human
+    | Computer
+
+updateCurrentPlayer  : (Player -> Player) -> Players -> Players
+updateCurrentPlayer fn players =
+    case players of
+        Players a b FirstPlayer ->
+            Players (fn a) b FirstPlayer
+        Players a b SecondPlayer ->
+            Players a (fn b) SecondPlayer
+    
+currentPlayer : Players -> Player
+currentPlayer players =
+    case players of 
+        Players a _ FirstPlayer ->
+            a
+        Players _ b SecondPlayer ->
+            b
+
+nextTurn : Players -> Players
+nextTurn players =
+    case players of
+        Players a b FirstPlayer ->
+            Players a b SecondPlayer
+        Players a b SecondPlayer ->
+            Players a b FirstPlayer
+
+playerOne : Players -> Player
+playerOne players =
+    case players of
+        Players a _ _ ->
+            a
+
+playerTwo : Players -> Player
+playerTwo players =
+    case players of
+        Players _ b _ ->
+            b
+
+isPlayersTurn : CurrentPlayer -> Players -> Bool
+isPlayersTurn turn players =
+    case players of
+        Players _ _ t ->
+            t == turn
+
+
+initPlayer : String -> PlayerType -> Player
+initPlayer name playerType = 
+    Player 0 name playerType
         
 
 view : Model -> Html Msg
 view model =
     div [ style "display" "grid"
-        , style "grid-template-columns" "auto 60px auto 60px auto"
-        , style "grid-template-rows" "150px 50px 10px 50px auto 10px"
+        , style "grid-template-columns" "auto 70px 520px 70px auto"
+        , style "grid-template-rows" "150px 60px 10px 60px 350px auto"
         , style "height" "100vh"
         , style "grid-template-areas" templateAreas
         ]
         [ playersContainer model
-        , selectedDiceContainer model
+        , selectedDiceContainer model FirstPlayer
         , currentDiceContainer model
+        , selectedDiceContainer model SecondPlayer
         , buttonContainer model
         ]
 
@@ -180,7 +239,7 @@ templateAreas =
         , "\". o . t .\""
         , "\". o b t .\""    
         , "\". o . t .\""
-        , "\". o . t .\""
+        , "\". . . . .\""
         ]
 
 
@@ -197,9 +256,9 @@ playersContainer model =
     div [ class "playersContainer"
         , style "grid-area" "p"       
         ] 
-        [ playerView model.playerA
+        [ playerView <| playerOne model.currentPlayers
         , playerSpacer
-        , playerView model.playerB
+        , playerView <| playerTwo model.currentPlayers
         ]
 
 
@@ -211,7 +270,6 @@ playerView player =
         ] 
         [ div [] [ text player.name ]
         , div [] [ text <| "SCORE: " ++ String.fromInt player.totalScore ]
-        , div [] [ text <| "Current Round: " ++ String.fromInt player.turnScore ]
         ]
 
 playerSpacer : Html Msg
@@ -223,16 +281,16 @@ playerSpacer =
 
 buttons : Model -> List (Html Msg)
 buttons model =
-    case (model.playerRolls, model.farkled) of
+    case (model.currentRolls, model.farkled) of
         (Nothing, _) -> 
-            [btn "Roll" <|  PlayerRoll 0 6]
+            [btn "Roll" <|  RollDice]
         (Just rolls, False) ->
             let
                 selectedRolls = List.filter .selected rolls
-                score = selectedScore rolls
+                score = farkleScore <| List.map .value <| List.filter .selected rolls
                 unkept = (List.length rolls) - (List.length selectedRolls)
             in
-                [ btn "Roll Again" <| PlayerRoll score unkept
+                [ btn "Roll Again" <| RollDice
                 , btn "Stay" <| PlayerStop score
                 ]
         (Just rolls, True) ->
@@ -243,14 +301,48 @@ btn name click =
     button [ onClick click ][ text name ] 
 
 
-selectedDiceContainer : Model ->  Html Msg
-selectedDiceContainer model =
-    div [ style "height" "100%"
-        , style "width" "100%"
-        , style "background-color" "lightgray"
-        , style "grid-area" "o"
+selectedDiceContainer : Model -> CurrentPlayer -> Html Msg
+selectedDiceContainer model owningPlayer =
+    let
+        rolls = 
+            case (isPlayersTurn owningPlayer model.currentPlayers, model.currentRolls) of
+                (True, Just rs) ->
+                    rs
+                _ ->
+                    []
+        gridArea = 
+            case owningPlayer of
+                FirstPlayer ->
+                    "o"
+                SecondPlayer ->
+                    "t"
+    in
+        div [ style "height" "100%"
+            , style "width" "100%"
+            , style "background-color" "lightgray"
+            , style "grid-area" gridArea
+            , style "display" "grid"
+            , style "grid-template-rows" "50px auto"
+            , style "grid-auto-flow" "row"
+            ]
+            [ diceScorer rolls
+            , selectedDiceView rolls 
+            ]
+
+selectedDiceView : List PlayerRollDie -> Html Msg
+selectedDiceView rolls =
+    div [ style "display" "grid"
+        , style "grid-auto-rows" dieSize
+        , style "grid-auto-flow" "row"
+        , style "grid-row-gap" "5px"
+        , style "grid-row" "2 / 2"
+        , style "border" "1px solid darkgrey"
+        , style "justify-content" "center"
+        , style "padding-top" "5px"
         ]
-        []
+        (diePickersWithoutFillers .selected  rolls)
+
+    
 
 currentDiceContainer : Model -> Html Msg
 currentDiceContainer model =
@@ -258,32 +350,62 @@ currentDiceContainer model =
         attrs = 
             [ class "currentDiceContainer"] ++ currentDiceContainerStyles
         rolls =
-            case model.playerRolls of
+            case model.currentRolls of
                 Nothing ->
                     []
                 Just r ->
                     r           
     in
-        div attrs <| diePickers rolls
+        div attrs <| diePickersWithFillers (\r -> not r.selected) rolls
               
 
 
 diceScorer : List PlayerRollDie -> Html Msg
 diceScorer rolls =
-    span [] [text <| String.fromInt <| selectedScore rolls]
-
-
-diePickers : List PlayerRollDie ->  List (Html Msg)
-diePickers rolls =
     let
-        emptyContainers = List.repeat (6 - List.length rolls) emptyDiePicker
+        score =
+            if List.isEmpty rolls then
+                []
+            else
+                [text <| String.fromInt <| farkleScore <| List.map .value <| List.filter .selected rolls]
     in
-        (List.indexedMap diePicker rolls) ++ emptyContainers
+        span diceScorerStyles score
 
-diePickerWrapper : Html Msg -> Html Msg
-diePickerWrapper dPicker =
-    div ([ class "diePickerWrapper" ] ++ diePickerWrapperStyles)
-         [dPicker]
+
+diePickersWithoutFillers : (PlayerRollDie -> Bool) -> List PlayerRollDie ->  List (Html Msg)
+diePickersWithoutFillers selector rolls = 
+        diePickers selector rolls
+            |> List.filterMap identity
+
+
+diePickersWithFillers : (PlayerRollDie -> Bool) -> List PlayerRollDie ->  List (Html Msg)
+diePickersWithFillers selector rolls = 
+    let
+        unMaybe =
+            (\r -> 
+                case r of
+                    Just element ->
+                        element
+                    Nothing ->
+                        emptyDiePicker
+            )
+    in
+        diePickers selector rolls
+            |> List.map unMaybe
+
+diePickers : (PlayerRollDie -> Bool) -> List PlayerRollDie ->  List (Maybe (Html Msg))
+diePickers selector rolls =
+    let
+        pickerPicker = 
+            (\i r ->
+                if selector r then
+                    Just (diePicker i r)
+                else
+                    Nothing
+            )
+    in
+        List.indexedMap pickerPicker rolls
+        
 
 diePicker : Int -> PlayerRollDie -> Html Msg
 diePicker index die =
@@ -298,6 +420,7 @@ diePicker index die =
                 ] ++ diePickerStyles
     in
         span attrs [ text <| String.fromInt die.value ]
+
 
 emptyDiePicker : Html Msg
 emptyDiePicker =
@@ -333,7 +456,7 @@ currentDiceContainerStyles : List (Html.Attribute Msg)
 currentDiceContainerStyles =
     [ style "grid-area" "d"
     , style "display" "grid"
-    , style "grid-auto-colums" "40px"
+    , style "grid-auto-rows" dieSize
     , style "grid-auto-flow" "column"
     , style "justify-self" "center"
     , style "grid-column-gap" "20px"
@@ -342,13 +465,24 @@ currentDiceContainerStyles =
 
 diePickerStyles : List (Html.Attribute Msg)
 diePickerStyles =
-    [ style "display" "inline-block"
-    , style "width" "40px"
-    , style "height" "40px"
+    [ style "display" "grid"
+    , style "width" dieSize
+    , style "height" dieSize
+    , style "border" "1px solid darkgrey"
+    , style "justify-content" "center"
+    , style "align-content" "center"
     ]
 
-diePickerWrapperStyles : List (Html.Attribute Msg)
-diePickerWrapperStyles =
-    [ style "width" "15%"
-    , style "display" "inline-block"
+
+diceScorerStyles : List (Html.Attribute Msg)
+diceScorerStyles =
+    [ style "background-color" "white"
+    , style "border" "1px solid lightgrey"
+    , style "justify-content" "center"
+    , style "align-content" "center"
+    , style "display" "grid"
     ]
+
+dieSize : String
+dieSize = 
+    "60px"
