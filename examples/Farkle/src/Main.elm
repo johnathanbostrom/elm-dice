@@ -5,12 +5,13 @@ import Html.Attributes exposing (style, class)
 import Html.Events exposing (onClick)
 import Dice exposing (RollResult, ChildrenRolls(..))
 import Random
-import FarkleBot exposing (automatedFarkleTurn)
+import FarkleBot exposing (automatedFarkleTurn, justRolls, FarkleTurnResult, FarkleRollResult)
 import Farkle exposing (farkleRoll, farkleScore, farkled)
-import List.Extra exposing (getAt, updateAt)
+import List.Extra exposing (getAt, updateAt, filterNot, findIndex, findIndices, elemIndices, gatherEquals)
+import Delay exposing (TimeUnit(..))
 
 type alias Model =
-    { computerRolls : Maybe RollResult
+    { computerRolls : Maybe FarkleTurnResult
     , currentRolls : Maybe (List PlayerRollDie)
     , currentPlayers : Players
     , farkled : Bool
@@ -52,9 +53,8 @@ init _ =
     )
 
 
-
 type Msg
-    = GotComputerRoll RollResult
+    = GotComputerRoll FarkleTurnResult
     | GotPlayerRoll RollResult
     | PlayerStop Int
     | PickDieToKeep Int
@@ -65,7 +65,8 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         GotComputerRoll roll ->
-            endTurn {model | turnScore = roll.value}
+            -- endTurn {model | turnScore = roll.value, computerRolls = Just roll}
+            ({model | computerRolls = Just roll}, animateComputerTurn roll)
         GotPlayerRoll roll ->
             let
                 rollFarkled = farkled roll
@@ -127,6 +128,50 @@ endTurn model =
                     computerTurn
     in
         ({model | currentPlayers = updatedPlayers, turnScore = 0}, cmd)
+
+
+animateComputerTurn : FarkleTurnResult ->  Cmd Msg
+animateComputerTurn rollResult =
+    List.reverse rollResult.rolls
+        |> List.map (animateComputerRoll) 
+        |> List.concat
+        |> Delay.sequence
+
+
+animateComputerRoll : FarkleRollResult -> List (Float, TimeUnit, Msg)
+animateComputerRoll rolls =
+    [ (1000, Millisecond, GotPlayerRoll rolls.roll) ] ++ (animateComputerPicks rolls)
+
+animateComputerPicks : FarkleRollResult -> List (Float, TimeUnit, Msg)
+animateComputerPicks rollResult =
+    case rollResult.roll.children of
+        Empty ->
+            []
+        RollResults rolls ->
+            List.map .value rollResult.kept
+                |> gatherEquals
+                |> List.map (\r -> getKeepIndices rolls r)
+                |> List.concat
+                |> List.map (\i -> animateComputerPick i)
+        
+
+getKeepIndices : List RollResult -> (Int, List Int) ->  List Int
+getKeepIndices rolls kept =
+    List.map .value rolls
+        |> elemIndices (Tuple.first kept)
+        |> List.take (1 + (List.length <| Tuple.second kept))
+    
+
+-- type alias FarkleRollResult =
+--     { score : Int
+--     , roll : RollResult
+--     , kept : List (RollResult)
+--     , diceLeft : Int
+--     }
+
+animateComputerPick : Int -> (Float, TimeUnit, Msg)
+animateComputerPick index =
+    (1000, Millisecond, PickDieToKeep index)
 
 
 
@@ -426,30 +471,30 @@ emptyDiePicker : Html Msg
 emptyDiePicker =
     span ([style "background-color" "lightgrey"] ++ diePickerStyles) []
 
-viewComputerRolls : Model -> Html Msg
-viewComputerRolls model =
-    case model.computerRolls of
-        Nothing -> 
-            div [][]
-        Just rolls ->
-            renderRoll rolls
+-- viewComputerRolls : Model -> Html Msg
+-- viewComputerRolls model =
+--     case model.computerRolls of
+--         Nothing -> 
+--             div [][]
+--         Just rolls ->
+--             renderRoll rolls.rolls
 
-renderRoll : RollResult -> Html Msg
-renderRoll roll =
-    let
-        valueString =
-            roll.description ++ ":  " ++ String.fromInt roll.value
-    in
-    case roll.children of
-        Empty ->
-            span [ style "margin-right" ".5em" ] [ text <| valueString ]
+-- renderRoll : RollResult -> Html Msg
+-- renderRoll roll =
+--     let
+--         valueString =
+--             roll.description ++ ":  " ++ String.fromInt roll.value
+--     in
+--     case roll.children of
+--         Empty ->
+--             span [ style "margin-right" ".5em" ] [ text <| valueString ]
 
-        RollResults rolls ->
-            let
-                children =
-                    div [ style "margin-left" "2em" ] (List.map renderRoll rolls)
-            in
-            div [] [ text <| valueString, children ]
+--         RollResults rolls ->
+--             let
+--                 children =
+--                     div [ style "margin-left" "2em" ] (List.map renderRoll rolls)
+--             in
+--             div [] [ text <| valueString, children ]
 
 
 currentDiceContainerStyles : List (Html.Attribute Msg)

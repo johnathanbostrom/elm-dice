@@ -1,23 +1,73 @@
-module FarkleBot exposing (automatedFarkleTurn, BotType)
+module FarkleBot exposing (automatedFarkleTurn, BotType, justRolls, FarkleTurnResult, FarkleRollResult)
 import Random
 import List.Extra exposing (gatherEquals, subsequences, minimumBy, maximumBy)
 import Helpers exposing (allMaxBy)
 import Random.Extra exposing (andThen2)
-import Dice exposing (RollResult,  ChildrenRolls(..), mapValue)
+import Dice exposing (RollResult, ChildrenRolls(..), mapValue)
 import Farkle exposing (farkleScore, farkleRoll)
 
 type BotType = Dumb 
 
-automatedFarkleTurn : Random.Generator RollResult
+justRolls : RollResult -> List RollResult
+justRolls rollResult =
+    case rollResult.children of
+        Empty ->
+            []  
+        RollResults rolls ->
+            rolls
+        
+
+automatedFarkleTurn : Random.Generator FarkleTurnResult
 automatedFarkleTurn =
     let
         firstRoll = farkleRoll 6
-        farkleRolls = Random.constant <| RollResult "farkle rolls" 0 Empty
+        farkleRolls = Random.constant <| FarkleTurnResult 0 []
     in
-        andThen2 rollFarkleTurn farkleRolls firstRoll
+        andThen2 rollFarkleTurn2 farkleRolls firstRoll
 
 
-rescoreFarkleRoll : FarkleStep -> RollResult -> RollResult
+rollFarkleTurn2 : FarkleTurnResult -> RollResult -> Random.Generator FarkleTurnResult
+rollFarkleTurn2 farkleTurn latestRoll =
+    let 
+        keep = maxThisRoll farkleTurn.score latestRoll
+        newTurnValue = 
+            if keep.score == 0 then 
+                0 
+            else 
+                farkleTurn.score + keep.score
+        generator = Random.constant { farkleTurn | rolls = keep :: farkleTurn.rolls, score = newTurnValue } 
+    in
+        if shouldReroll newTurnValue keep.diceLeft then
+            farkleRoll keep.diceLeft
+                |> andThen2 rollFarkleTurn2 generator
+        else
+            generator
+
+
+    -- let
+    --     keep = maxThisRoll farkleRolls.value latestRoll
+    --     newScore = farkleRolls.value + keep.score
+    --     rescoredRoll = rescoreFarkleRoll keep latestRoll  
+    --     combinedRolls = combineFarkleRolls2 farkleRolls rescoredRoll
+    --     fRoll = FarkleRollResult newScore rescoredRoll keep.rolls
+    --     combinedRollGenerator = Random.constant combinedRolls 
+    -- in
+    --     if keep.score == 0 then
+    --         combinedRollGenerator
+    --             |> mapValue (\_ -> 0)
+    --             |> Random.andThen (\r -> Random.constant {r | description = "Farkle!"})
+    --     else if shouldReroll newScore keep.diceLeft then
+    --         farkleRoll keep.diceLeft
+    --         |> mapValue (\r -> (maxThisRoll newScore r).score)
+    --         |> andThen2 rollFarkleTurn2 combinedRollGenerator
+    --     else
+    --         combinedRollGenerator    
+
+
+
+
+
+rescoreFarkleRoll : FarkleRollResult -> RollResult -> RollResult
 rescoreFarkleRoll diceKept roll =
     let
         newDescription =
@@ -25,7 +75,7 @@ rescoreFarkleRoll diceKept roll =
             if diceKept.score < 1 then
                 "Farkle!"
             else
-                "Kept " ++ " [" ++ (String.join ", " <| List.map String.fromInt diceKept.dice) ++ "]"
+                "Kept " ++ " [" ++ (String.join ", " <| List.map (\r -> String.fromInt r.value) diceKept.kept) ++ "]"
     in
         {roll | value = diceKept.score, description = newDescription}
 
@@ -73,48 +123,55 @@ shouldReroll score numDice =
 
 
 
-maxThisRoll : Int -> RollResult -> FarkleStep
+maxThisRoll : Int -> RollResult -> FarkleRollResult
 maxThisRoll currentScore roll =
-    validFarkleSteps roll
-        |> keepMaxWithLeastDice (scoreFarkleStep currentScore)
-        |> Maybe.withDefault {dice = [], diceLeft = 0, score = 0}
+    validFarkleRollResults roll
+        |> keepMaxWithLeastDice (scoreFarkleRollResult currentScore)
+        |> Maybe.withDefault {roll = roll, kept = [], diceLeft = 0, score = 0}
                 
 
-scoreFarkleStep : Int -> FarkleStep -> Int
-scoreFarkleStep currentScore farkleStep =
-    if shouldReroll (currentScore + farkleStep.score) farkleStep.diceLeft then
-        farkleStep.score + expectedValue farkleStep.diceLeft
+scoreFarkleRollResult : Int -> FarkleRollResult -> Int
+scoreFarkleRollResult currentScore farkleRollResult =
+    if shouldReroll (currentScore + farkleRollResult.score) farkleRollResult.diceLeft then
+        farkleRollResult.score + expectedValue farkleRollResult.diceLeft
     else
-        farkleStep.score
+        farkleRollResult.score
 
 
-validFarkleSteps : RollResult -> List FarkleStep
-validFarkleSteps rollResult =
+validFarkleRollResults : RollResult -> List FarkleRollResult
+validFarkleRollResults rollResult =
     case rollResult.children of
         Empty ->
             []
         RollResults rolls ->
             subsequences rolls
                 |> List.filter (\s -> List.length s > 0)
-                |> List.map (\rs -> toFarkleStep rolls rs)
+                |> List.map (\rs -> toFarkleRollResult rollResult rs (List.length rolls - List.length rs))
                 |> List.filter (\s -> s.score > 0)
 
-keepMaxWithLeastDice : (FarkleStep -> comparable) -> List FarkleStep -> Maybe FarkleStep
+keepMaxWithLeastDice : (FarkleRollResult -> comparable) -> List FarkleRollResult -> Maybe FarkleRollResult
 keepMaxWithLeastDice maxCalc possibleDice =
     allMaxBy maxCalc possibleDice
     |> maximumBy .diceLeft
 
 
-type alias FarkleStep = { score : Int
-                        , dice : List Int
-                        , diceLeft : Int
-                        }
+
+type alias FarkleRollResult =
+    { score : Int
+    , roll : RollResult
+    , kept : List (RollResult)
+    , diceLeft : Int
+    }
+
+type alias FarkleTurnResult =
+    { score : Int
+    , rolls : List FarkleRollResult
+    }
 
 
-toFarkleStep : List RollResult -> List RollResult -> FarkleStep
-toFarkleStep allRolls rollsKept =
-    List.length allRolls - List.length rollsKept
-        |> FarkleStep (farkleScore <| List.map .value rollsKept) (List.map .value rollsKept)
+toFarkleRollResult : RollResult -> List RollResult -> Int -> FarkleRollResult
+toFarkleRollResult allRolls rollsKept numLeft =
+    FarkleRollResult (farkleScore <| List.map .value rollsKept) allRolls rollsKept numLeft
 
 
 expectedValue : Int -> Int
