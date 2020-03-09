@@ -65,7 +65,6 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         GotComputerRoll roll ->
-            -- endTurn {model | turnScore = roll.value, computerRolls = Just roll}
             ({model | computerRolls = Just roll}, animateComputerTurn roll)
         GotPlayerRoll roll ->
             let
@@ -85,13 +84,7 @@ update msg model =
                     case model.currentRolls of
                         Just rolls ->
                             rolls
-                                |> updateAt index 
-                                    (\r -> 
-                                        let
-                                            wasSelected = r.selected
-                                        in
-                                            {r| selected = not wasSelected}
-                                    )
+                                |> updateAt index (\r -> {r| selected = not r.selected})
                                 |> Just
                         Nothing ->
                             Nothing
@@ -127,20 +120,25 @@ endTurn model =
                 Computer ->
                     computerTurn
     in
-        ({model | currentPlayers = updatedPlayers, turnScore = 0}, cmd)
+        ({model | currentPlayers = updatedPlayers, turnScore = 0, currentRolls = Nothing, computerRolls = Nothing}, cmd)
 
 
 animateComputerTurn : FarkleTurnResult ->  Cmd Msg
 animateComputerTurn rollResult =
-    List.reverse rollResult.rolls
-        |> List.map (animateComputerRoll) 
-        |> List.concat
+        animateComputerRolls rollResult
+        ++ [(1000, Millisecond, PlayerStop rollResult.score)]
         |> Delay.sequence
 
 
+animateComputerRolls  : FarkleTurnResult -> List (Float, TimeUnit, Msg)
+animateComputerRolls rollResult =
+    List.reverse rollResult.rolls
+        |> List.map (animateComputerRoll) 
+        |> List.concat
+
 animateComputerRoll : FarkleRollResult -> List (Float, TimeUnit, Msg)
 animateComputerRoll rolls =
-    [ (1000, Millisecond, GotPlayerRoll rolls.roll) ] ++ (animateComputerPicks rolls)
+    [ (500, Millisecond, GotPlayerRoll rolls.roll) ] ++ (animateComputerPicks rolls)
 
 animateComputerPicks : FarkleRollResult -> List (Float, TimeUnit, Msg)
 animateComputerPicks rollResult =
@@ -162,23 +160,16 @@ getKeepIndices rolls kept =
         |> List.take (1 + (List.length <| Tuple.second kept))
     
 
--- type alias FarkleRollResult =
---     { score : Int
---     , roll : RollResult
---     , kept : List (RollResult)
---     , diceLeft : Int
---     }
-
 animateComputerPick : Int -> (Float, TimeUnit, Msg)
 animateComputerPick index =
-    (1000, Millisecond, PickDieToKeep index)
+    (500, Millisecond, PickDieToKeep index)
 
 
 
 computerTurn : Cmd Msg
 computerTurn =
     automatedFarkleTurn
-    |> Random.generate GotComputerRoll
+        |> Random.generate GotComputerRoll
 
 playerRoll : Int -> Cmd Msg
 playerRoll numDice = 
@@ -273,8 +264,14 @@ view model =
         , currentDiceContainer model
         , selectedDiceContainer model SecondPlayer
         , buttonContainer model
+        , turnCommentaryView model
         ]
 
+
+turnCommentaryView : Model -> Html Msg
+turnCommentaryView model =
+    div [ style "grid-area" "c" ]
+        [ text <| "Score This Turn: " ++ (String.fromInt  model.turnScore)]
 
 templateAreas : String 
 templateAreas =
@@ -283,17 +280,21 @@ templateAreas =
         , "\". o d t .\""
         , "\". o . t .\""
         , "\". o b t .\""    
-        , "\". o . t .\""
+        , "\". o c t .\""
         , "\". . . . .\""
         ]
 
 
 buttonContainer : Model -> Html Msg
 buttonContainer model =
-    div [ class "buttonContainer"
-        , style "grid-area" "b" 
-        , style "justify-self" "center" 
-        ]  <| buttons model
+    case (currentPlayer model.currentPlayers).playerType of
+        Human ->
+            div [ class "buttonContainer"
+                , style "grid-area" "b" 
+                , style "justify-self" "center" 
+                ]  <| buttons model
+        Computer ->
+            div [] []
 
 
 playersContainer : Model -> Html Msg
@@ -331,13 +332,15 @@ buttons model =
             [btn "Roll" <|  RollDice]
         (Just rolls, False) ->
             let
-                selectedRolls = List.filter .selected rolls
-                score = farkleScore <| List.map .value <| List.filter .selected rolls
-                unkept = (List.length rolls) - (List.length selectedRolls)
+                keptValues = List.map .value <| List.filter .selected rolls
+                stopBtn = btn "Stay" <| PlayerStop <| farkleScore <| keptValues
             in
-                [ btn "Roll Again" <| RollDice
-                , btn "Stay" <| PlayerStop score
-                ]
+                if (List.length keptValues) == (List.length rolls) then
+                    [stopBtn]
+                else
+                    [ btn "Roll Again" <| RollDice
+                    , stopBtn
+                    ]
         (Just rolls, True) ->
             [btn "End Turn" <| PlayerStop 0]
 
@@ -367,7 +370,7 @@ selectedDiceContainer model owningPlayer =
             , style "background-color" "lightgray"
             , style "grid-area" gridArea
             , style "display" "grid"
-            , style "grid-template-rows" "50px auto"
+            , style "grid-template-rows" "60px auto"
             , style "grid-auto-flow" "row"
             ]
             [ diceScorer rolls

@@ -37,7 +37,9 @@ rollFarkleTurn2 farkleTurn latestRoll =
                 farkleTurn.score + keep.score
         generator = Random.constant { farkleTurn | rolls = keep :: farkleTurn.rolls, score = newTurnValue } 
     in
-        if shouldReroll newTurnValue keep.diceLeft then
+        if keep.score == 0 then
+            generator
+        else if shouldReroll newTurnValue keep.diceLeft then
             farkleRoll keep.diceLeft
                 |> andThen2 rollFarkleTurn2 generator
         else
